@@ -1,4 +1,7 @@
 #pragma once
+#include "camera.h"
+
+#include <glm/vec4.hpp>
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -17,10 +20,16 @@
 
 struct ConstantBuffer
 {
-	DirectX::XMFLOAT4 maxThreadIter;
-	DirectX::XMFLOAT4 fillColor;
+	glm::vec4 maxThreadIter;
 
-	float padding[56];
+	glm::vec4 camPosition;
+	glm::vec4 camDirection;
+	
+	glm::vec4 camUpperLeftCorner;
+	glm::vec4 camPixelOffsetHorizontal;
+	glm::vec4 camPixelOffsetVertical;
+
+	float padding[40];
 };
 
 static_assert((sizeof(ConstantBuffer) % 256) == 0);
@@ -41,6 +50,8 @@ public:
 	void renderImGui(int aFPS);
 
 	void copyComputeTextureToBackbuffer();
+
+	void updateCameraVariables(const Camera& aCamera);
 
 private:
 	void updateConstantBuffer();
@@ -103,7 +114,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> computePipelineState;
 
-	// constant buffer for comput shader
+	// constant buffer for compute shader
 	ConstantBuffer* constantBuffer;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> computeConstantBuffer;

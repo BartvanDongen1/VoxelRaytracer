@@ -154,12 +154,20 @@ void Graphics::copyComputeTextureToBackbuffer()
     TransitionResource(commandList.Get(), computeTexture[frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
+void Graphics::updateCameraVariables(const Camera& aCamera)
+{
+    constantBuffer->camPosition = glm::vec4(aCamera.getPosition(), 0.f);
+    constantBuffer->camDirection = glm::vec4(aCamera.getDirection(), 0.f);
+    constantBuffer->camUpperLeftCorner = glm::vec4(aCamera.getUpperLeftCorner(), 0.f);
+
+    constantBuffer->camPixelOffsetHorizontal = glm::vec4(aCamera.getPixelOffsetHorizontal(), 0.f);
+    constantBuffer->camPixelOffsetVertical = glm::vec4(aCamera.getPixelOffsetVertical(), 0.f);
+}
+
 void Graphics::updateConstantBuffer()
 {
-
-    constantBuffer->maxThreadIter = DirectX::XMFLOAT4(static_cast<float>(1920), static_cast<float>(1080), 0, 0);
-    constantBuffer->fillColor = DirectX::XMFLOAT4(1.f, 0.f, 1.f, 1.0f);
-
+    constantBuffer->maxThreadIter = glm::vec4(Window::getWidth(), Window::getHeight(), 0, 0);
+    
     memcpy(pCbvDataBegin, constantBuffer, sizeof(ConstantBuffer));
 }
 

@@ -57,6 +57,9 @@
     <ClCompile Include="source\engine\logger.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="source\rendering\camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\window.h">
@@ -105,6 +108,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\engine\logger.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rendering\camera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

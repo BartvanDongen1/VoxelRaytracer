@@ -2,6 +2,7 @@
 
 class Graphics;
 class Window;
+class Camera;
 
 class Renderer
 {
@@ -19,5 +20,6 @@ private:
 	int fps{ 0 };
 
 	Graphics* graphics;
+	Camera* camera;
 };
 
