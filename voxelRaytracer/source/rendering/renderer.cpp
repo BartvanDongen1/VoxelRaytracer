@@ -2,17 +2,20 @@
 #include "rendering\graphics.h"
 #include "rendering\camera.h"
 #include "window.h"
+#include "engine\controller.h"
+#include "engine\inputManager.h"
 
 Renderer::Renderer()
 {
 	graphics = new Graphics();
-	camera = new Camera();
+	cameraController = new Controller();
+	//camera = new Camera();
 }
 
 Renderer::~Renderer()
 {
 	delete graphics;
-	delete camera;
+	delete cameraController;
 }
 
 void Renderer::init()
@@ -20,15 +23,41 @@ void Renderer::init()
 	Window::init(1920, 1080, "Voxel Renderer");
 	graphics->init();
 	
-	glm::vec3 pos{ 0,0,0 };
-	glm::vec3 dir{ 0,0,1 };
-	
-	camera->init(pos, dir, 100.f);
+	cameraController->init();
+	camera = cameraController->getCamera();
+
+	scene = new VoxelModel(32, 32, 32);
+	initRandomVoxels(scene, 5);
 }
 
 void Renderer::update(float aDeltaTime)
 {
+	offset += aDeltaTime / 10;
+
 	Window::processMessages();
+
+	// controller updates
+	if (InputManager::getKey(Keys::f)->pressed)
+	{
+		if (windowFocused)
+		{
+			Window::freeCursor();
+			Window::showCursor();
+		}
+		else
+		{
+			Window::confineCursor();
+			Window::hideCursor();
+		}
+
+		windowFocused = !windowFocused;
+	}
+
+	if (windowFocused)
+	{
+		// only update controller if window in focus
+		cameraController->update(aDeltaTime);
+	}
 
 	//fps counter
 	frameTimeAccumilator += aDeltaTime;
@@ -41,10 +70,12 @@ void Renderer::update(float aDeltaTime)
 		framesThisSecond = 0;
 	}
 
+	graphics->updateOctreeVariables(*scene);
 	graphics->updateCameraVariables(*camera);
 
 	//rendering
 	graphics->beginFrame();
+
 
 	graphics->renderFrame();
 	graphics->copyComputeTextureToBackbuffer();

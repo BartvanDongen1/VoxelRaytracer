@@ -15,11 +15,18 @@
 #define IID_GRAPHICS_PPV_ARGS(x) IID_PPV_ARGS(x)
 #endif
 
+static ID3DBlob* globalErrorBlob;
 
 inline void ThrowIfFailed(HRESULT hr)
 {
     if (FAILED(hr))
     {
+        if (globalErrorBlob)
+        {
+            OutputDebugStringA((char*)globalErrorBlob->GetBufferPointer());
+            globalErrorBlob->Release();
+        }
+
         throw std::exception();
     }
 }

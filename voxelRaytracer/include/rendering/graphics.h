@@ -1,5 +1,6 @@
 #pragma once
 #include "camera.h"
+#include "rendering\octree.h"
 
 #include <glm/vec4.hpp>
 
@@ -29,7 +30,7 @@ struct ConstantBuffer
 	glm::vec4 camPixelOffsetHorizontal;
 	glm::vec4 camPixelOffsetVertical;
 
-	float padding[40];
+	glm::vec4 padding[10];
 };
 
 static_assert((sizeof(ConstantBuffer) % 256) == 0);
@@ -51,7 +52,8 @@ public:
 
 	void copyComputeTextureToBackbuffer();
 
-	void updateCameraVariables(const Camera& aCamera);
+	void updateCameraVariables(Camera& aCamera);
+	void updateOctreeVariables(const VoxelModel& aModel);
 
 private:
 	void updateConstantBuffer();
@@ -102,7 +104,8 @@ private:
 
 	//compute shader stuff
 	Microsoft::WRL::ComPtr<ID3D12Resource>      computeTexture[2];
-	D3D12_RESOURCE_STATES computeTextureResourceState[2]; // current state of the compute texture, unordered or texture view
+	Microsoft::WRL::ComPtr<ID3D12Resource>      sceneDataTexture;
+	//D3D12_RESOURCE_STATES computeTextureResourceState[2]; // current state of the compute texture, unordered or texture view
 
 	int threadGroupX;
 	int threadGroupY;

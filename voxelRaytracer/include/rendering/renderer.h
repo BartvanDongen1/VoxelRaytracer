@@ -1,8 +1,11 @@
 #pragma once
+#include "rendering\octree.h"
 
 class Graphics;
 class Window;
 class Camera;
+class Controller;
+struct VoxelModel;
 
 class Renderer
 {
@@ -20,6 +23,15 @@ private:
 	int fps{ 0 };
 
 	Graphics* graphics;
+	
+	VoxelModel* scene;
+
+	Controller* cameraController;
 	Camera* camera;
+	//octree::OctreeChunk octreeChunk;
+
+	float offset = 0;
+
+	bool windowFocused{ false };
 };
 

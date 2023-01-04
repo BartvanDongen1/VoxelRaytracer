@@ -109,6 +109,9 @@ void Graphics::renderFrame()
     CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1 + frameIndex, cbvSrvUavDescriptorSize);
     commandList->SetComputeRootDescriptorTable(1, descriptorHandle);
 
+    CD3DX12_GPU_DESCRIPTOR_HANDLE SceneTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
+    commandList->SetComputeRootDescriptorTable(2, SceneTextureDescriptorHandle);
+
     commandList->SetPipelineState(computePipelineState.Get());
     commandList->Dispatch(threadGroupX, threadGroupY, 1);
 }
@@ -154,14 +157,62 @@ void Graphics::copyComputeTextureToBackbuffer()
     TransitionResource(commandList.Get(), computeTexture[frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-void Graphics::updateCameraVariables(const Camera& aCamera)
+void Graphics::updateCameraVariables(Camera& aCamera)
 {
-    constantBuffer->camPosition = glm::vec4(aCamera.getPosition(), 0.f);
+    constantBuffer->camPosition = glm::vec4(aCamera.position, 0.f);
     constantBuffer->camDirection = glm::vec4(aCamera.getDirection(), 0.f);
     constantBuffer->camUpperLeftCorner = glm::vec4(aCamera.getUpperLeftCorner(), 0.f);
 
     constantBuffer->camPixelOffsetHorizontal = glm::vec4(aCamera.getPixelOffsetHorizontal(), 0.f);
     constantBuffer->camPixelOffsetVertical = glm::vec4(aCamera.getPixelOffsetVertical(), 0.f);
+}
+
+void Graphics::updateOctreeVariables(const VoxelModel& aModel)
+{
+    assert(aModel.sizeX == 32 && aModel.sizeY == 32 && aModel.sizeZ == 32);
+
+    ThrowIfFailed(commandAllocators[frameIndex]->Reset());
+    ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), nullptr));
+
+    //transition texture
+    auto myResourceBarrierBefore = CD3DX12_RESOURCE_BARRIER::Transition(sceneDataTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    commandList->ResourceBarrier(1, &myResourceBarrierBefore);
+
+    //copy over data
+    ComPtr<ID3D12Resource> textureUploadHeap;
+
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(sceneDataTexture.Get(), 0, 1);
+    auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+
+    auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+    // Create the GPU upload buffer.
+    ThrowIfFailed(device->CreateCommittedResource(
+        &uploadHeapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&textureUploadHeap)));
+
+    D3D12_SUBRESOURCE_DATA textureData = {};
+    textureData.pData = aModel.data;
+    textureData.RowPitch = static_cast<long>(aModel.sizeX) * 4;
+    textureData.SlicePitch = textureData.RowPitch * aModel.sizeY;
+
+    UpdateSubresources(commandList.Get(), sceneDataTexture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
+
+    //transition back
+    auto myResourceBarrierAfter = CD3DX12_RESOURCE_BARRIER::Transition(sceneDataTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &myResourceBarrierAfter);
+
+    ThrowIfFailed(commandList->Close());
+
+    // Execute the command list.
+    ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
+    commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    waitForGpu();
 }
 
 void Graphics::updateConstantBuffer()
@@ -268,7 +319,7 @@ bool Graphics::loadPipeline()
 
         // Describe and create a Unordered Access View (UAV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 3;
+        srvHeapDesc.NumDescriptors = 4;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&cbvSrvUavHeap)));
@@ -336,24 +387,22 @@ void Graphics::loadComputeStage()
     //create out textures for the compute shader
     const D3D12_HEAP_PROPERTIES myDefaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1920, 1080, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    computeTextureResourceState[0] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     ThrowIfFailed(
         device->CreateCommittedResource(
             &myDefaultHeapProperties,
             D3D12_HEAP_FLAG_NONE,
             &myTextureDesc,
-            computeTextureResourceState[0],
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             nullptr,
             IID_PPV_ARGS(computeTexture[0].ReleaseAndGetAddressOf())));
     computeTexture[0]->SetName(L"compute Texture 0");
 
-    computeTextureResourceState[1] = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     ThrowIfFailed(
         device->CreateCommittedResource(
             &myDefaultHeapProperties,
             D3D12_HEAP_FLAG_NONE,
             &myTextureDesc,
-            computeTextureResourceState[1],
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             nullptr,
             IID_PPV_ARGS(computeTexture[1].ReleaseAndGetAddressOf())));
     computeTexture[1]->SetName(L"compute Texture 1");
@@ -367,21 +416,48 @@ void Graphics::loadComputeStage()
     device->CreateUnorderedAccessView(computeTexture[0].Get(), nullptr, nullptr, srvHandle1);
     device->CreateUnorderedAccessView(computeTexture[1].Get(), nullptr, nullptr, srvHandle2);
 
+    //create 3D texture for the scene
+    {
+        const D3D12_RESOURCE_DESC myTexture3DDesc = CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R32_UINT, 32, 32, 32);
+        ThrowIfFailed(
+            device->CreateCommittedResource(
+                &myDefaultHeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &myTexture3DDesc,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                nullptr,
+                IID_PPV_ARGS(sceneDataTexture.ReleaseAndGetAddressOf())));
+        sceneDataTexture->SetName(L"Scene Data Texture");
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC mySceneDataDesc = {};
+        mySceneDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        mySceneDataDesc.Format = myTexture3DDesc.Format;
+        mySceneDataDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+        mySceneDataDesc.Texture3D.MipLevels = 1;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle3(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
+        device->CreateShaderResourceView(sceneDataTexture.Get(), &mySceneDataDesc, srvHandle3);
+    }
+
     // Enable better shader debugging with the graphics debugging tools.
     UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
     D3D_SHADER_MACRO macros[] = { NULL, NULL };
 
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, nullptr));
+    ID3DBlob* errorBlob = nullptr;
+    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
-    CD3DX12_DESCRIPTOR_RANGE1 myRanges[2];
+    CD3DX12_DESCRIPTOR_RANGE1 myRanges[3];
     myRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+    myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-    CD3DX12_ROOT_PARAMETER1 myRootParameters[2];
+    CD3DX12_ROOT_PARAMETER1 myRootParameters[3];
     myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL);
+    myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL);
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
@@ -404,8 +480,7 @@ void Graphics::loadComputeStage()
     rootSignatureDesc.Init_1_1(_countof(myRootParameters), myRootParameters, 0, nullptr, rootSignatureFlags);
 
     ComPtr<ID3DBlob> signature;
-    ComPtr<ID3DBlob> error;
-    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &error));
+    ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &globalErrorBlob));
     ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)));
 
     // Create compute pipeline state

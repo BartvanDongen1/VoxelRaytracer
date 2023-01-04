@@ -86,6 +86,8 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="source\engine\controller.cpp" />
+    <ClCompile Include="source\rendering\octree.cpp" />
     <ClCompile Include="source\rendering\camera.cpp" />
     <ClCompile Include="source\engine\logger.cpp" />
     <ClCompile Include="source\rendering\graphics.cpp" />
@@ -101,8 +103,10 @@
     <ClCompile Include="source\rendering\imgui-docking\imgui_widgets.cpp" />
     <ClCompile Include="source\window.cpp" />
     <ClCompile Include="source\engine\timer.cpp" />
+    <ClCompile Include="source\engine\voxelModel.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\engine\controller.h" />
     <ClInclude Include="include\rendering\camera.h" />
     <ClInclude Include="include\rendering\d3dx12.h" />
     <ClInclude Include="include\rendering\graphics.h" />
@@ -116,10 +120,12 @@
     <ClInclude Include="include\engine\inputManager.h" />
     <ClInclude Include="include\rendering\renderer.h" />
     <ClInclude Include="include\engine\logger.h" />
+    <ClInclude Include="include\rendering\octree.h" />
     <ClInclude Include="source\rendering\helper.h" />
     <ClInclude Include="source\rendering\imgui-docking\imgui_impl_dx12.h" />
     <ClInclude Include="source\rendering\imgui-docking\imgui_impl_win32.h" />
     <ClInclude Include="include\engine\timer.h" />
+    <ClInclude Include="include\engine\voxelModel.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
