@@ -3,15 +3,21 @@
 
 struct VoxelModel
 {
-	VoxelModel(uint8_t aSizeX, uint8_t aSizeY, uint8_t aSizeZ);
+	VoxelModel() {};
+	VoxelModel(int aSizeX, int aSizeY, int aSizeZ);
 
-	uint32_t getVoxel(uint8_t aX, uint8_t aY, uint8_t aZ) const;
+	~VoxelModel();
 
-	const uint8_t sizeX;
-	const uint8_t sizeY;
-	const uint8_t sizeZ;
+	void combineModel(int aX, int aY, int aZ, VoxelModel* aModel);
 
-	uint32_t* data;
+	uint32_t getVoxel(int aX, int aY, int aZ) const;
+	void setVoxel(int aX, int aY, int aZ, uint32_t aValue);
+
+	const int sizeX{ 0 };
+	const int sizeY{ 0 };
+	const int sizeZ{ 0 };
+
+	uint32_t* data{ nullptr };
 };
 
 void initRandomVoxels(VoxelModel* aModel, int aFillAmount = 10);

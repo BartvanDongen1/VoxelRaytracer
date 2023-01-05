@@ -4,12 +4,12 @@
 #include "window.h"
 #include "engine\controller.h"
 #include "engine\inputManager.h"
+#include "engine\voxelModelLoader.h"
 
 Renderer::Renderer()
 {
 	graphics = new Graphics();
 	cameraController = new Controller();
-	//camera = new Camera();
 }
 
 Renderer::~Renderer()
@@ -27,7 +27,12 @@ void Renderer::init()
 	camera = cameraController->getCamera();
 
 	scene = new VoxelModel(32, 32, 32);
-	initRandomVoxels(scene, 5);
+	//initRandomVoxels(scene, 5);
+	VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 32);
+	VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 32);
+	//scene = VoxelModelLoader::getModel("resources/models/sponza/sponza.obj", 32);
+
+	scene->combineModel(0, 0, 0, myTeapot);
 }
 
 void Renderer::update(float aDeltaTime)
