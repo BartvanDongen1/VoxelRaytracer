@@ -29,11 +29,6 @@ struct RayStruct
     float3 direction;
 };
 
-struct TraverseResult
-{
-    float rayTraverseDist;
-};
-
 RayStruct createRay(float2 windowPos);
 uint SampleScene(int3 aCoord);
 float traverseVoxel(RayStruct aRay, float3 aDelta);
@@ -46,7 +41,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     float3 delta = 1. / max(abs(myRay.direction), eps);
     float currentDist = 0.f;
-
+    
     for (int i = 0; i < FAR; i++)
     {
         float3 deltaPos = myRay.origin + myRay.direction * currentDist;

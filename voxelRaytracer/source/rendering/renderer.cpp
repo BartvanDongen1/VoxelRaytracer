@@ -5,6 +5,7 @@
 #include "engine\controller.h"
 #include "engine\inputManager.h"
 #include "engine\voxelModelLoader.h"
+#include "rendering\octree.h"
 
 Renderer::Renderer()
 {
@@ -26,13 +27,17 @@ void Renderer::init()
 	cameraController->init();
 	camera = cameraController->getCamera();
 
+	octree = new Octree({ 0,0,0 }, { 32,32,32 });
+
 	scene = new VoxelModel(32, 32, 32);
 	//initRandomVoxels(scene, 5);
 	VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 32);
 	VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 32);
 	//scene = VoxelModelLoader::getModel("resources/models/sponza/sponza.obj", 32);
 
-	scene->combineModel(0, 0, 0, myTeapot);
+	octree->init(myMonkey);
+
+	scene->combineModel(0, 0, 0, myMonkey);
 }
 
 void Renderer::update(float aDeltaTime)

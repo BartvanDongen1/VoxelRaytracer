@@ -6,6 +6,7 @@ class Window;
 class Camera;
 class Controller;
 struct VoxelModel;
+class Octree;
 
 class Renderer
 {
@@ -28,7 +29,7 @@ private:
 
 	Controller* cameraController;
 	Camera* camera;
-	//octree::OctreeChunk octreeChunk;
+	Octree* octree;
 
 	float offset = 0;
 
