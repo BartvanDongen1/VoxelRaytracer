@@ -27,12 +27,12 @@ void Renderer::init()
 	cameraController->init();
 	camera = cameraController->getCamera();
 
-	octree = new Octree({ 0,0,0 }, { 32,32,32 });
+	octree = new Octree();
 
 	scene = new VoxelModel(32, 32, 32);
 	//initRandomVoxels(scene, 5);
-	VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 32);
-	VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 32);
+	VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
+	VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
 	//scene = VoxelModelLoader::getModel("resources/models/sponza/sponza.obj", 32);
 
 	octree->init(myMonkey);
@@ -80,7 +80,9 @@ void Renderer::update(float aDeltaTime)
 		framesThisSecond = 0;
 	}
 
-	graphics->updateOctreeVariables(*scene);
+	graphics->updateOctreeVariables(*octree);
+
+	graphics->updateModelVariables(*scene);
 	graphics->updateCameraVariables(*camera);
 
 	//rendering

@@ -2,34 +2,46 @@
 #include <glm\glm.hpp>
 #include "engine\logger.h"
 
+constexpr size_t layer0offset =
+0;
+
+constexpr size_t layer1offset =
+1;
+
+constexpr size_t layer2offset =
+layer1offset +
+8;
+
+constexpr size_t layer3offset =
+layer2offset +
+8 * 8;
+
+constexpr size_t layer4offset =
+layer3offset +
+8 * 8 * 8;
+
 constexpr size_t octreeSize = 
-1 +
-8 +
-8 * 8 +
-8 * 8 * 8 +
+layer4offset +
 8 * 8 * 8 * 8;
 
-Octree::Octree(glm::uvec3 aMin, glm::uvec3 aMax, Octree* aParent)
-{
-	min = aMin;
-	max = aMax;
+constexpr size_t myParentOffsetOffset = 0;
 
-	parent = aParent;
+constexpr size_t myChildOffsetOffset = 10;
 
-	if ((max - min).x > 1)
-	{
-		glm::uvec3 mid = (min + max) / glm::uvec3(2);
+constexpr size_t myFilledOffset = 23;
 
-		children[0] = new Octree({ min.x, min.y, min.z }, { mid.x, mid.y, mid.z }, this);
-		children[1] = new Octree({ mid.x, min.y, min.z }, { max.x, mid.y, mid.z }, this);
-		children[2] = new Octree({ min.x, mid.y, min.z }, { mid.x, max.y, mid.z }, this);
-		children[3] = new Octree({ mid.x, mid.y, min.z }, { max.x, max.y, mid.z }, this);
-		children[4] = new Octree({ min.x, min.y, mid.z }, { mid.x, mid.y, max.z }, this);
-		children[5] = new Octree({ mid.x, min.y, mid.z }, { max.x, mid.y, max.z }, this);
-		children[6] = new Octree({ min.x, mid.y, mid.z }, { mid.x, max.y, max.z }, this);
-		children[7] = new Octree({ mid.x, mid.y, mid.z }, { max.x, max.y, max.z }, this);
-	}
-}
+constexpr size_t myColorOffset = 24;
+
+//octree node data -> 32 bits
+
+// 24 bits octree traveral & 8 bits color data
+	// 10 bits parent offset data -> offset 0
+	// 13 bits children offset data -> offset 10
+	// 1 bit filled in bool -> offset 23
+	// 8 bits voxel data -> offset 24
+
+Octree::Octree()
+{}
 
 Octree::~Octree()
 {
@@ -41,8 +53,8 @@ Octree::~Octree()
 
 void Octree::init(VoxelModel* aModel)
 {
-	min = { 0,0,0 };
-	max = { aModel->sizeX, aModel->sizeY, aModel->sizeZ };
+	rawData = new int[octreeSize] { 0 };
+	constructed = true;
 
 	for (int i = 0; i < aModel->sizeX * aModel->sizeY * aModel->sizeZ; i++)
 	{
@@ -50,50 +62,130 @@ void Octree::init(VoxelModel* aModel)
 
 		if (myPointData)
 		{
-			int myX = i % 32;
-			int myY = (i / 32) % 32;
-			int myZ = i / (32 * 32);
+			int myX = i % 16;
+			int myY = (i / 16) % 16;
+			int myZ = i / (16 * 16);
+
+			assert(myX < 16 && myY < 16 && myZ < 16);
 
 			insertPoint(myX, myY, myZ, 1);
 		}
 	}
 }
 
-void Octree::constructData()
+int* Octree::getData() const
 {
-	if (constructed)
-	{
-		LOG_WARNING("Octree already constructed");
-	}
-
-	rawData = new int[octreeSize] { 0 };
-
-
+	return rawData;
 }
 
 void Octree::insertPoint(int aX, int aY, int aZ, uint8_t aColor)
 {
-	glm::uvec3 myPoint{ aX, aY, aZ };
-
-	empty = false;
-
-	if ((max - min) == glm::uvec3(1,1,1))
+	//0th layer insertion
 	{
-		// at leaf node
-		color = aColor;
-		return;
+		int myData = 0;
+
+		myData |= layer1offset << myChildOffsetOffset;
+		
+		//layer 0 has no parent
+		
+		myData |= 0b1 << myFilledOffset;
+
+		rawData[0] = myData;
 	}
 
-	glm::uvec3 mid = (min + max) / glm::uvec3(2);
+	int myChildLayersOffset = 0;
 
-	glm::uvec3 octant{ 0,0,0 };
+	int myLayer1Offset;
+	//1st layer instertion
+	{
+		int myData = 0;
 
+		int myXOctant = aX >> 3;
+		int myYOctant = aY >> 3;
+		int myZOctant = aZ >> 3;
 
-	if (myPoint.x > mid.x) octant.x = 1;
-	if (myPoint.y > mid.y) octant.y = 1;
-	if (myPoint.z > mid.z) octant.z = 1;
+		int layerOffset = static_cast<int>(myXOctant) + static_cast<int>(myYOctant) * 2 + static_cast<int>(myZOctant) * 4;
+		myLayer1Offset = layer1offset + layerOffset;
 
-	int childIndex = octant.x + octant.y * 2 + octant.z * 4;
+		myChildLayersOffset = layerOffset << 3;
 
-	children[childIndex]->insertPoint(aX, aY, aZ, aColor);
+		myData |= layer2offset + myChildLayersOffset << myChildOffsetOffset;
+		
+		myData |= layer0offset << myParentOffsetOffset;
+		
+		myData |= 0b1 << myFilledOffset;
+
+		rawData[myLayer1Offset] = myData;
+	}
+
+	int myLayer2Offset;
+	//2nd layer insertion
+	{
+		int myData = 0;
+
+		int myXOctant = (aX & 0b100) >> 2;
+		int myYOctant = (aY & 0b100) >> 2;
+		int myZOctant = (aZ & 0b100) >> 2;
+
+		int layerOffset = static_cast<int>(myXOctant) + static_cast<int>(myYOctant) * 2 + static_cast<int>(myZOctant) * 4;
+		myLayer2Offset = layer2offset + myChildLayersOffset + layerOffset;
+
+		myChildLayersOffset <<= 3;
+		myChildLayersOffset += layerOffset << 3;
+
+		myData |= layer3offset + myChildLayersOffset << myChildOffsetOffset;
+
+		myData |= myLayer1Offset << myParentOffsetOffset;
+
+		myData |= 0b1 << myFilledOffset;
+
+		rawData[myLayer2Offset] = myData;
+	}
+
+	int myLayer3Offset;
+	//3rd layer insertion
+	{
+		int myData = 0;
+
+		int myXOctant = (aX & 0b10) >> 1;
+		int myYOctant = (aY & 0b10) >> 1;
+		int myZOctant = (aZ & 0b10) >> 1;
+
+		int layerOffset = static_cast<int>(myXOctant) + static_cast<int>(myYOctant) * 2 + static_cast<int>(myZOctant) * 4;
+		myLayer3Offset = layer3offset + myChildLayersOffset + layerOffset;
+
+		myChildLayersOffset <<= 3;
+		myChildLayersOffset += layerOffset << 3;
+
+		myData |= layer4offset + myChildLayersOffset << myChildOffsetOffset;
+
+		myData |= myLayer2Offset << myParentOffsetOffset;
+
+		myData |= 0b1 << myFilledOffset;
+
+		rawData[myLayer3Offset] = myData;
+	}
+
+	int myLayer4Offset;
+	//4th layer insertion
+	{
+		int myData = 0;
+
+		int myXOctant = (aX & 0b1);
+		int myYOctant = (aY & 0b1);
+		int myZOctant = (aZ & 0b1);
+
+		int layerOffset = static_cast<int>(myXOctant) + static_cast<int>(myYOctant) * 2 + static_cast<int>(myZOctant) * 4;
+		myLayer4Offset = layer4offset + myChildLayersOffset + layerOffset;
+
+		//leaf node has no child
+
+		myData |= myLayer3Offset << myParentOffsetOffset;
+
+		myData |= 0b1 << myFilledOffset;
+
+		myData |= aColor << myColorOffset;
+
+		rawData[myLayer4Offset] = myData;
+	}
 }

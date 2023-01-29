@@ -7,24 +7,15 @@
 class Octree
 {
 public:
-	Octree(glm::uvec3 aMin, glm::uvec3 aMax, Octree* aParent = nullptr);
+	Octree();
 	~Octree();
 
 	void init(VoxelModel* aModel);
-	void constructData();
 
+	int* getData() const;
 private:
 	void insertPoint(int aX, int aY, int aZ, uint8_t aColor);
 
 	int* rawData;
 	bool constructed{ false };
-
-	bool empty{ true };
-	uint8_t color;
-	
-	glm::uvec3 min;
-	glm::uvec3 max;
-
-	Octree* parent;
-	Octree* children[8];
 };

@@ -30,10 +30,13 @@ struct ConstantBuffer
 	glm::vec4 camPixelOffsetHorizontal;
 	glm::vec4 camPixelOffsetVertical;
 
-	glm::vec4 padding[10];
+	//int octreeBuffer[4681];
+
+	float padding[40];
 };
 
-static_assert((sizeof(ConstantBuffer) % 256) == 0);
+constexpr size_t modulatedSize = sizeof(ConstantBuffer) % 256;
+static_assert(modulatedSize == 0);
 
 class Graphics
 {
@@ -53,7 +56,8 @@ public:
 	void copyComputeTextureToBackbuffer();
 
 	void updateCameraVariables(Camera& aCamera);
-	void updateOctreeVariables(const VoxelModel& aModel);
+	void updateModelVariables(const VoxelModel& aModel);
+	void updateOctreeVariables(const Octree& aOctree);
 
 private:
 	void updateConstantBuffer();
@@ -105,6 +109,10 @@ private:
 	//compute shader stuff
 	Microsoft::WRL::ComPtr<ID3D12Resource>      computeTexture[2];
 	Microsoft::WRL::ComPtr<ID3D12Resource>      sceneDataTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource>      octreeBuffer;
+
+	UINT8* pCbvDataBeginOctree = nullptr;
+
 	//D3D12_RESOURCE_STATES computeTextureResourceState[2]; // current state of the compute texture, unordered or texture view
 
 	int threadGroupX;

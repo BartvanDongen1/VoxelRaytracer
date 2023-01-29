@@ -112,6 +112,9 @@ void Graphics::renderFrame()
     CD3DX12_GPU_DESCRIPTOR_HANDLE SceneTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
     commandList->SetComputeRootDescriptorTable(2, SceneTextureDescriptorHandle);
 
+    CD3DX12_GPU_DESCRIPTOR_HANDLE octreeBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
+    commandList->SetComputeRootDescriptorTable(3, octreeBufferDescriptorHandle);
+
     commandList->SetPipelineState(computePipelineState.Get());
     commandList->Dispatch(threadGroupX, threadGroupY, 1);
 }
@@ -167,7 +170,7 @@ void Graphics::updateCameraVariables(Camera& aCamera)
     constantBuffer->camPixelOffsetVertical = glm::vec4(aCamera.getPixelOffsetVertical(), 0.f);
 }
 
-void Graphics::updateOctreeVariables(const VoxelModel& aModel)
+void Graphics::updateModelVariables(const VoxelModel& aModel)
 {
     assert(aModel.sizeX == 32 && aModel.sizeY == 32 && aModel.sizeZ == 32);
 
@@ -213,6 +216,22 @@ void Graphics::updateOctreeVariables(const VoxelModel& aModel)
     commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     waitForGpu();
+}
+
+void Graphics::updateOctreeVariables(const Octree& aOctree)
+{
+    // Get a pointer to the mapped data
+    void* mappedData;
+
+    CD3DX12_RANGE readRange(0, 0);
+    ThrowIfFailed(octreeBuffer->Map(0, &readRange, &mappedData));
+
+    // Update the data
+    memcpy(mappedData, aOctree.getData(), 4681 * sizeof(int));
+
+    // Unmap the buffer
+    octreeBuffer->Unmap(0, &readRange);
+
 }
 
 void Graphics::updateConstantBuffer()
@@ -319,7 +338,7 @@ bool Graphics::loadPipeline()
 
         // Describe and create a Unordered Access View (UAV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 4;
+        srvHeapDesc.NumDescriptors = 5;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&cbvSrvUavHeap)));
@@ -384,38 +403,41 @@ void Graphics::loadAssets()
 
 void Graphics::loadComputeStage()
 {
-    //create out textures for the compute shader
     const D3D12_HEAP_PROPERTIES myDefaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1920, 1080, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    ThrowIfFailed(
-        device->CreateCommittedResource(
-            &myDefaultHeapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &myTextureDesc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            nullptr,
-            IID_PPV_ARGS(computeTexture[0].ReleaseAndGetAddressOf())));
-    computeTexture[0]->SetName(L"compute Texture 0");
 
-    ThrowIfFailed(
-        device->CreateCommittedResource(
-            &myDefaultHeapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &myTextureDesc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            nullptr,
-            IID_PPV_ARGS(computeTexture[1].ReleaseAndGetAddressOf())));
-    computeTexture[1]->SetName(L"compute Texture 1");
+    //create out textures for the compute shader
+    {
+        const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1920, 1080, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        ThrowIfFailed(
+            device->CreateCommittedResource(
+                &myDefaultHeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &myTextureDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr,
+                IID_PPV_ARGS(computeTexture[0].ReleaseAndGetAddressOf())));
+        computeTexture[0]->SetName(L"compute Texture 0");
 
-    threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT;
-    threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT;
+        ThrowIfFailed(
+            device->CreateCommittedResource(
+                &myDefaultHeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &myTextureDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr,
+                IID_PPV_ARGS(computeTexture[1].ReleaseAndGetAddressOf())));
+        computeTexture[1]->SetName(L"compute Texture 1");
 
-    // create uav
-    CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
-    device->CreateUnorderedAccessView(computeTexture[0].Get(), nullptr, nullptr, srvHandle1);
-    device->CreateUnorderedAccessView(computeTexture[1].Get(), nullptr, nullptr, srvHandle2);
+        threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT;
+        threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT;
 
+        // create uav
+        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
+        device->CreateUnorderedAccessView(computeTexture[0].Get(), nullptr, nullptr, uavHandle1);
+        device->CreateUnorderedAccessView(computeTexture[1].Get(), nullptr, nullptr, uavHandle2);
+    }
+    
     //create 3D texture for the scene
     {
         const D3D12_RESOURCE_DESC myTexture3DDesc = CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R32_UINT, 32, 32, 32);
@@ -435,8 +457,41 @@ void Graphics::loadComputeStage()
         mySceneDataDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
         mySceneDataDesc.Texture3D.MipLevels = 1;
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle3(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
-        device->CreateShaderResourceView(sceneDataTexture.Get(), &mySceneDataDesc, srvHandle3);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
+        device->CreateShaderResourceView(sceneDataTexture.Get(), &mySceneDataDesc, srvHandle);
+    }
+
+    //create structured buffer for the octree
+    {
+        auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+        D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
+        // 4681 is the size of my current octree
+        myAllocationInfo.SizeInBytes = 4681 * sizeof(int);
+        myAllocationInfo.Alignment = 0;
+
+        const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
+
+        ThrowIfFailed(
+            device->CreateCommittedResource(
+                &heapUpload,
+                D3D12_HEAP_FLAG_NONE,
+                &myBufferDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(octreeBuffer.ReleaseAndGetAddressOf())));
+
+        octreeBuffer->SetName(L"Octree buffer");
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC myOctreeDataDesc = {};
+        myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        myOctreeDataDesc.Format = DXGI_FORMAT_R32_SINT;
+        myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        // 4681 is the size of my current octree
+        myOctreeDataDesc.Buffer.NumElements = 4681;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
+        device->CreateShaderResourceView(octreeBuffer.Get(), &myOctreeDataDesc, srvHandle);
     }
 
     // Enable better shader debugging with the graphics debugging tools.
@@ -446,18 +501,21 @@ void Graphics::loadComputeStage()
     D3D_SHADER_MACRO macros[] = { NULL, NULL };
 
     ID3DBlob* errorBlob = nullptr;
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
-    CD3DX12_DESCRIPTOR_RANGE1 myRanges[3];
+    CD3DX12_DESCRIPTOR_RANGE1 myRanges[4];
     myRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    myRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
 
-    CD3DX12_ROOT_PARAMETER1 myRootParameters[3];
+    CD3DX12_ROOT_PARAMETER1 myRootParameters[4];
     myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL);
+    myRootParameters[3].InitAsDescriptorTable(1, &myRanges[3], D3D12_SHADER_VISIBILITY_ALL);
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 

@@ -12,6 +12,8 @@ cbuffer constantBuffer : register(b0)
     float4 camPixelOffsetHorizontal;
     float4 camPixelOffsetVertical;
 
+    
+    
     float4 padding[10];
 }
 
