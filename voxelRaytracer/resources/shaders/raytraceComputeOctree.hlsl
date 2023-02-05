@@ -223,41 +223,17 @@ VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale)
     
     float3 delta = aRay.rayDelta;
     
-    //get x dist
-    if (aRay.direction.x < 0.)
-    {
-        results[0].distance = ((aRay.origin.x / aScale - floor(aRay.origin.x / aScale)) * aScale) * delta.x;
-        results[0].normal = float3(1, 0, 0);
-    }
-    else
-    {
-        results[0].distance = ((ceil(aRay.origin.x / aScale) - aRay.origin.x / aScale) * aScale) * delta.x;
-        results[0].normal = float3(-1, 0, 0);
-    }
+    //get x dist    
+    results[0].distance = (abs(aRay.origin.x / aScale - floor(aRay.origin.x / aScale) - (aRay.direction.x > 0.)) * aScale) * delta.x;
+    results[0].normal = float3(((aRay.direction.x < 0.) << 1) - 1, 0, 0);
     
-    //get y dist
-    if (aRay.direction.y < 0.)
-    {
-        results[1].distance = ((aRay.origin.y / aScale - floor(aRay.origin.y / aScale)) * aScale) * delta.y;
-        results[1].normal = float3(0, 1, 0);
-    }
-    else
-    {
-        results[1].distance = ((ceil(aRay.origin.y / aScale) - aRay.origin.y / aScale) * aScale) * delta.y;
-        results[1].normal = float3(0, -1, 0);
-    }
+    //get y dist    
+    results[1].distance = (abs(aRay.origin.y / aScale - floor(aRay.origin.y / aScale) - (aRay.direction.y > 0.)) * aScale) * delta.y;
+    results[1].normal = float3(0, ((aRay.direction.y < 0.) << 1) - 1, 0);
     
-    //get z dist
-    if (aRay.direction.z < 0.)
-    {
-        results[2].distance = ((aRay.origin.z / aScale - floor(aRay.origin.z / aScale)) * aScale) * delta.z;
-        results[2].normal = float3(0, 0, 1);
-    }
-    else
-    {
-        results[2].distance = ((ceil(aRay.origin.z / aScale) - aRay.origin.z / aScale) * aScale) * delta.z;
-        results[2].normal = float3(0, 0, -1);
-    }
+    //get z dist    
+    results[2].distance = (abs(aRay.origin.z / aScale - floor(aRay.origin.z / aScale) - (aRay.direction.z > 0.)) * aScale) * delta.z;
+    results[2].normal = float3(0, 0, ((aRay.direction.z < 0.) << 1) - 1);
     
     VoxelTraverseResult min = results[0];
     if (results[1].distance < min.distance) min = results[1];

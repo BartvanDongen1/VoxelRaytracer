@@ -153,6 +153,7 @@ void Graphics::renderImGui(int aFPS)
 
     ImGui::Begin("settings", &windowOpen, ImGuiWindowFlags_None);
     ImGui::Text("current FPS: %i", aFPS);
+    ImGui::Text("accumulated frames: %i", accumulationConstantBuffer->framesAccumulated);
     ImGui::End();
 
     // Rendering
