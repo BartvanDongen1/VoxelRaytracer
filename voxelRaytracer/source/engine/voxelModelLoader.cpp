@@ -7,6 +7,12 @@
 #include <iostream>
 #include <rapidobj\rapidobj.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#pragma warning(push, 0)
+//#pragma warning(disable : 4068)
+#include <stb/stb_image.h>
+#pragma warning(pop)
+
 #define VOXELIZER_IMPLEMENTATION
 #include <voxelizer\voxelizer.h>
 
@@ -30,11 +36,14 @@ struct hash_pair
 
 static std::unordered_map<const char*, MeshModel> modelMeshes;
 static std::unordered_map<std::pair<const char* , int>, VoxelModel, hash_pair> voxelizedModels;
+static std::unordered_map<const char*, Texture> textures;
 
 void loadModel(const char* aFileName);
 void voxelizeMesh(const char* aFileName, int aResolution);
 void voxelizeMesh2(const char* aFileName, int aResolution);
 void ReportError(const rapidobj::Error& error);
+
+void loadTexture(const char* aFileName);
 
 VoxelModel* VoxelModelLoader::getModel(const char* aFileName, int aResolution)
 {
@@ -49,6 +58,16 @@ VoxelModel* VoxelModelLoader::getModel(const char* aFileName, int aResolution)
 	}
 
     return &voxelizedModels[{ aFileName, aResolution }];
+}
+
+Texture* VoxelModelLoader::getTexture(const char* aFileName)
+{
+    if (!textures.count(aFileName))
+    {
+        loadTexture(aFileName);
+    }
+
+    return &textures[aFileName];
 }
 
 void loadModel(const char* aFileName)
@@ -183,3 +202,25 @@ void ReportError(const rapidobj::Error& error)
     }
 }
 
+void loadTexture(const char* aFileName)
+{
+    // load image
+    int width;
+    int height;
+    int comp;
+    unsigned char* data = nullptr;
+    data = stbi_load(aFileName, &width, &height, &comp, 4);
+
+    // assert data is loaded
+    assert(data);
+
+    int totalMemSize = sizeof(unsigned char) * comp * width * height;
+
+    Texture myTexture;
+    myTexture.textureWidth = width;
+    myTexture.textureHeight = height;
+    myTexture.bytesPerPixel = comp;
+    myTexture.textureData = data;
+
+    textures.insert({ aFileName, myTexture });
+}

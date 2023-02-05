@@ -29,15 +29,19 @@ void Renderer::init()
 
 	octree = new Octree();
 
-	scene = new VoxelModel(32, 32, 32);
-	//initRandomVoxels(scene, 5);
-	VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
-	VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
+	scene = new VoxelModel(16, 16, 16);
+	initRandomVoxels(scene, 5);
+	//VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
+	//VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
 	//scene = VoxelModelLoader::getModel("resources/models/sponza/sponza.obj", 32);
 
-	octree->init(myMonkey);
+	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
+	graphics->updateNoiseTexture(*myTexture);
 
-	scene->combineModel(0, 0, 0, myMonkey);
+	octree->init(scene);
+	graphics->updateOctreeVariables(*octree);
+
+	//scene->combineModel(0, 0, 0, myTeapot);
 }
 
 void Renderer::update(float aDeltaTime)
@@ -80,10 +84,7 @@ void Renderer::update(float aDeltaTime)
 		framesThisSecond = 0;
 	}
 
-	graphics->updateOctreeVariables(*octree);
-
-	graphics->updateModelVariables(*scene);
-	graphics->updateCameraVariables(*camera);
+	graphics->updateCameraVariables(*camera, framesThisSecond, windowFocused);
 
 	//rendering
 	graphics->beginFrame();

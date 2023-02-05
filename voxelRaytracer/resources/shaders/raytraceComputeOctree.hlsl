@@ -1,6 +1,6 @@
 RWTexture2D<float4> OutputTexture : register(u0);
 
-Texture3D<uint> sceneData : register(t0);
+Texture2D noiseTexture : register(t0);
 StructuredBuffer<int> octreeData : register(t1);
 
 cbuffer constantBuffer : register(b0)
@@ -13,10 +13,16 @@ cbuffer constantBuffer : register(b0)
     float4 camUpperLeftCorner;
     float4 camPixelOffsetHorizontal;
     float4 camPixelOffsetVertical;
+    
+    int frameCount;
+    int sampleCount;
 }
 
+#define FLOAT_MAX 3.402823466e+38F
 #define eps 1./ 1080.f
 #define OCTREE_DEPTH_LEVELS 5
+#define MAX_STEPS 80
+#define MAX_BOUNCES 2
 
 struct RayStruct
 {
@@ -34,32 +40,151 @@ struct NodeData
     int color;
 };
 
-RayStruct createRay(float2 windowPos);
-float traverseVoxel(RayStruct aRay, float aScale = 1.f);
+struct HitResult
+{
+    float hitDistance;
+    int color;
+    int loopCount;
+    float3 hitNormal;
+};
 
-int traverseOctree(RayStruct aRay);
+struct VoxelTraverseResult
+{
+    float distance;
+    float3 normal;
+};
+
+HitResult hitResultDefault()
+{
+    HitResult result;
+    result.hitDistance = FLOAT_MAX;
+    result.color - 1;
+    result.loopCount = 0;
+    result.hitNormal = float3(0, 0, 0);
+    return result;
+}
+
+struct RandomOut
+{
+    float randomNum;
+    int seed;
+};
+
+struct RandomState
+{
+    uint z0;
+    uint z1;
+    uint z2;
+    uint z3;
+};
+
+//RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
+
+RayStruct createRay(float2 windowPos);
+VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale = 1.f);
+
+HitResult traverseOctree(RayStruct aRay);
 float2 intersectAABB(RayStruct aRay, float3 boxMin, float3 boxMax);
 
 NodeData getNodeAtOffset(int aOffset);
-int traverseNode(NodeData aNode, RayStruct aRay, int aScale);
+HitResult traverseNode(NodeData aNode, RayStruct aRay, int aScale);
 
+float4 colorIndexToColor(int aIndex);
+
+int xorShift32(int aSeed);
+int wangHash(int aSeed);
+//RandomOut random(float aMin, float aMax, int aSeed);
+void updateRandom(inout RandomState rs);
+float3 random1(RandomState rs);
+
+RandomState initialize(int2 aDTid, int aOffset);
+
+float3 randomInUnitSphere(float3 r);
 
 [numthreads(8, 8, 1)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
     float2 WindowLocal = ((float2) DTid.xy / maxThreadIter.xy);  
-    RayStruct myRay = createRay(WindowLocal);
+    RandomState rs = initialize(DTid.xy, frameCount);
     
-    //check if ray intersects octree
-    int color = traverseOctree(myRay);
-        
-    if (color != -1)
+    float4 outColor = float4(0, 0, 0, 1);
+    
+    HitResult hitResults[MAX_BOUNCES];
+    int stackPointer = 0;
+    
+    for (int i = 0; i < sampleCount; i++)
     {
-        OutputTexture[DTid.xy] = float4(1, 1, 1, 1);
-        return;
+        RayStruct myRay = createRay(WindowLocal);
+    
+        bool stop = false;
+        while (!stop)
+        {
+            HitResult hit = traverseOctree(myRay);
+        
+            if (hit.hitDistance == FLOAT_MAX)
+            {
+                ////hit light
+                //float4 myOutColor = float4(0.1, 0.1, 0.3, 1.0);
+            
+                //for (int i = stackPointer - 1; i > 0; i--)
+                //{
+                //    HitResult myHit = hitResults[i];
+                
+                //    myOutColor *= colorIndexToColor(myHit.color);
+                //}
+            
+                //outColor = myOutColor;
+                stop = true;
+                continue;
+            }
+        
+            hitResults[stackPointer] = hit;
+            stackPointer++;
+        
+            if (hit.color < 3)
+            {
+                //hit light
+                float4 myOutColor = colorIndexToColor(hit.color);
+            
+                for (int i = stackPointer - 1; i > 0; i--)
+                {
+                    HitResult myHit = hitResults[i];
+                
+                    myOutColor *= colorIndexToColor(myHit.color);
+                }
+            
+                outColor += myOutColor;
+                stop = true;
+                continue;
+            }
+        
+            if (stackPointer == MAX_BOUNCES)
+            {
+                stop = true;
+                continue;
+            }
+            
+            if (hit.color < 3)
+            {
+                //reflection
+            }
+        
+            //diffusion
+            updateRandom(rs);
+            float3 random = random1(rs);
+        
+            float3 rayDirection = normalize(hit.hitNormal + randomInUnitSphere(random));
+            float3 hitPoint = myRay.origin + myRay.direction * hit.hitDistance;
+        
+            myRay.direction = rayDirection;
+            myRay.origin = hitPoint;
+            myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+        }
+        
+        stackPointer = 0;
     }
     
-    OutputTexture[DTid.xy] = float4(myRay.direction, 1);
+    OutputTexture[DTid.xy] = outColor / sampleCount;
 }
 
 RayStruct createRay(float2 windowPos)
@@ -75,72 +200,120 @@ RayStruct createRay(float2 windowPos)
     return myRay;
 }
 
-float traverseVoxel(RayStruct aRay, float aScale)
+//RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed)
+//{
+//    RayStruct myRay;
+    
+//    int seed = (int) ((hitPosition.x + hitPosition.y - hitPosition.z) * 10000.f) + aSeed;
+    
+//    float3 direction;
+
+//    do
+//    {
+//        RandomOut randomStruct = random(-1, 1, aSeed);
+//        float x = randomStruct.randomNum;
+//        randomStruct = random(-1, 1, randomStruct.seed);
+//        float y = randomStruct.randomNum;
+//        randomStruct = random(-1, 1, randomStruct.seed);
+//        float z = randomStruct.randomNum;
+        
+//        direction = float3(x, y, z);
+
+//    } while (length(direction) > 1);
+
+//    direction = normalize(direction);
+    
+//    if (dot(direction, hitNormal) < 0)
+//    {
+//        direction *= -1;
+//    }
+
+//    myRay.origin = hitPosition;
+//    myRay.direction = direction;
+//    myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+    
+//    return myRay;
+//}
+
+VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale)
 {
-    float3 t;
+    VoxelTraverseResult results[3];
     
     float3 delta = aRay.rayDelta;
     
     //get x dist
-    float absValueX = abs(aRay.origin.x);
-    
-    float lowX = absValueX - absValueX % aScale;
-    float highX = lowX + aScale;
-    
-    float resultX = aRay.direction.x < 0. ? lowX : highX;
-    t.x = abs(resultX - aRay.origin.x) * delta.x;
+    if (aRay.direction.x < 0.)
+    {
+        results[0].distance = ((aRay.origin.x / aScale - floor(aRay.origin.x / aScale)) * aScale) * delta.x;
+        results[0].normal = float3(1, 0, 0);
+    }
+    else
+    {
+        results[0].distance = ((ceil(aRay.origin.x / aScale) - aRay.origin.x / aScale) * aScale) * delta.x;
+        results[0].normal = float3(-1, 0, 0);
+    }
     
     //get y dist
-    float absValueY = abs(aRay.origin.y);
-
-    float lowY = absValueY - absValueY % aScale;
-    float highY = lowY + aScale;
+    if (aRay.direction.y < 0.)
+    {
+        results[1].distance = ((aRay.origin.y / aScale - floor(aRay.origin.y / aScale)) * aScale) * delta.y;
+        results[1].normal = float3(0, 1, 0);
+    }
+    else
+    {
+        results[1].distance = ((ceil(aRay.origin.y / aScale) - aRay.origin.y / aScale) * aScale) * delta.y;
+        results[1].normal = float3(0, -1, 0);
+    }
     
-    float resultY = aRay.direction.y < 0. ? lowY : highY;
-    t.y = abs(resultY - aRay.origin.y) * delta.y;
- 
     //get z dist
-    float absValueZ = abs(aRay.origin.z);
-
-    float lowZ = absValueZ - absValueZ % aScale;
-    float highZ = lowZ + aScale;
+    if (aRay.direction.z < 0.)
+    {
+        results[2].distance = ((aRay.origin.z / aScale - floor(aRay.origin.z / aScale)) * aScale) * delta.z;
+        results[2].normal = float3(0, 0, 1);
+    }
+    else
+    {
+        results[2].distance = ((ceil(aRay.origin.z / aScale) - aRay.origin.z / aScale) * aScale) * delta.z;
+        results[2].normal = float3(0, 0, -1);
+    }
     
-    float resultZ = aRay.direction.z < 0. ? lowZ : highZ;
-    t.z = abs(resultZ - aRay.origin.z) * delta.z;
+    VoxelTraverseResult min = results[0];
+    if (results[1].distance < min.distance) min = results[1];
+    if (results[2].distance < min.distance) min = results[2];
     
-    //// get x dist
-    //t.x = aRay.direction.x < 0. ? ((aRay.origin.x / aScale - floor(aRay.origin.x / aScale)) * aScale) * delta.x
-    //                : ((ceil(aRay.origin.x / aScale) - aRay.origin.x / aScale) * aScale) * delta.x;
-                    
-    //// get y dist
-    //t.y = aRay.direction.y < 0. ? ((aRay.origin.y / aScale - floor(aRay.origin.y / aScale)) * aScale) * delta.y
-    //                : ((ceil(aRay.origin.y / aScale) - aRay.origin.y / aScale) * aScale) * delta.y;
+    min.distance += 0.001f;
     
-    //// get z dist
-    //t.z = aRay.direction.z < 0. ? ((aRay.origin.z / aScale - floor(aRay.origin.z / aScale)) * aScale) * delta.z
-    //                : ((ceil(aRay.origin.z / aScale) - aRay.origin.z / aScale) * aScale) * delta.z;
-
-    return min(t.x, min(t.y, t.z)) + 0.001f;
+    return min;
 }
 
-int traverseOctree(RayStruct aRay)
+HitResult traverseOctree(RayStruct aRay)
 {
     float2 result = intersectAABB(aRay, float3(0, 0, 0), float3(16, 16, 16));
     
-    if (result.x < result.y && result.x > 0)
+    if (result.x < result.y && result.y > 0)
     {
-        NodeData myNode = getNodeAtOffset(0);
+        float3 intersectPos = aRay.origin;
+        float RayOriginOffset = 0.f;
         
-        float3 intersectPos = aRay.origin + aRay.direction * result.x;
+        if (result.x > 0)
+        {
+            RayOriginOffset += result.x + 0.01f;
+            intersectPos += aRay.direction * (result.x + 0.01f);
+        }
+        
         RayStruct myRay;
-        myRay.origin = intersectPos + aRay.direction * 0.01f;
+        myRay.origin = intersectPos;
         myRay.direction = aRay.direction;
         myRay.rayDelta = aRay.rayDelta;
         
-        return traverseNode(myNode, myRay, 16);
+        NodeData myNode = getNodeAtOffset(0);
+        
+        HitResult hit = traverseNode(myNode, myRay, 16);
+        hit.hitDistance += RayOriginOffset;
+        return hit;
     }
     
-    return -1;
+    return hitResultDefault();
 }
 
 float2 intersectAABB(RayStruct aRay, float3 boxMin, float3 boxMax)
@@ -221,7 +394,7 @@ bool isPositionInOctantAtScale(float3 aPosition, int3 aOctantCorner, int aScale)
            aPosition.z - aOctantCorner.z > aScale || aPosition.z - aOctantCorner.z < 0;
 }
 
-int traverseNode(NodeData aNode, RayStruct aRay, int aScale)
+HitResult traverseNode(NodeData aNode, RayStruct aRay, int aScale)
 {
     TraversalItem traversalStack[OCTREE_DEPTH_LEVELS];
     int stackPointer = 1;
@@ -234,28 +407,47 @@ int traverseNode(NodeData aNode, RayStruct aRay, int aScale)
        
     int3 octantCorner = int3(0, 0, 0);
     
+    HitResult result = hitResultDefault();
+    
+    //get initial normal
+    {
+        RayStruct myRay = aRay;
+        myRay.direction = -myRay.direction;
+        
+        result.hitNormal = -traverseVoxel(myRay, 16.f).normal;
+    }
+    
     RayStruct myRay = aRay;
+    float distance = 0.0f;
     while (stackPointer > 0)
     {
+        result.loopCount++;
+        
         NodeData currentNode = traversalStack[stackPointer - 1].aNode;
         int currentScale = traversalStack[stackPointer - 1].aScale;
         
         if (!currentNode.filled)
         {
             //move ray to go to outside node, since we don't want to check for it again
-            float deltaDistance = traverseVoxel(myRay, currentScale);
-            myRay.origin += myRay.direction * deltaDistance;
+            VoxelTraverseResult traverseResult = traverseVoxel(myRay, currentScale);
+            
+            result.hitNormal = traverseResult.normal;
+            distance += traverseResult.distance;
+            
+            myRay.origin = aRay.origin + myRay.direction * distance;
             
             octantCorner = removeOffsetAtScale(octantCorner, currentScale);
-
+            
             stackPointer--;
             continue;
         }
         
         if (currentScale == 1)
         {
-            return 1;
-            //return currentNode.color;
+            result.color = currentNode.color;
+            result.hitDistance = distance - 0.0011f;
+            
+            return result;
         }
         
         if (isPositionInOctantAtScale(myRay.origin, octantCorner, currentScale))
@@ -281,5 +473,109 @@ int traverseNode(NodeData aNode, RayStruct aRay, int aScale)
     }
     
     //no intersection found when traversing the ray
-    return -1;
+    return result;
+}
+
+float4 colorIndexToColor(int aIndex)
+{
+    switch (aIndex)
+    {
+        case 1:
+                {
+                return float4(1, 0.5, 1, 1);
+            }
+            
+        case 2:
+                {
+                return float4(1, 1, 0.5, 1);
+            }
+            
+        case 3:
+                {
+                return float4(0.5, 0.5, 0.5, 1);
+            }
+            
+        case 4:
+                {
+                return float4(0.5, 0.5, 0.5, 1);
+            }
+    }
+    
+    return float4(0, 0, 0, 1);
+
+}
+
+int xorShift32(int aSeed)
+{
+    int x = aSeed;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x;
+}
+
+int wangHash(int aSeed)
+{
+    aSeed = (aSeed ^ 61) ^ (aSeed >> 16);
+    aSeed *= 9;
+    aSeed = aSeed ^ (aSeed >> 4);
+    aSeed *= 0x27d4eb2d;
+    aSeed = aSeed ^ (aSeed >> 15);
+    return aSeed;
+}
+
+//RandomOut random(float aMin, float aMax, int aSeed)
+//{
+//    RandomOut result;
+    
+//    result.seed = xorShift32(aSeed);
+    
+//    result.randomNum = aMin + ((float) result.seed / 0xffffffff) * (aMax - aMin);
+    
+//    return result;
+//}
+
+void updateRandom(inout RandomState rs)
+{
+    rs.z0 = xorShift32(rs.z0);
+    rs.z1 = xorShift32(rs.z1);
+    rs.z2 = xorShift32(rs.z2);
+    rs.z3 = xorShift32(rs.z3);
+}
+
+float3 random1(RandomState rs)
+{
+    float3 result;
+    
+    result.x = frac(0.00002328 * float(rs.z0));
+    result.y = frac(0.00002328 * float(rs.z1));
+    result.z = frac(0.00002328 * float(rs.z2));
+    
+    return result;
+}
+
+float3 randomInUnitSphere(float3 r)
+{
+    float3 p;
+    p = 2.0 * r - float3(1.0, 1.0, 1.0);
+    while (dot(p, p) > 1.0)
+        p *= 0.7;
+    return p;
+}
+
+RandomState initialize(int2 aDTid, int aOffset)
+{
+    RandomState output;
+    
+    int width, height, numLevels;
+    noiseTexture.GetDimensions(0, width, height, numLevels);
+    
+    float4 random = noiseTexture.Load(int3((aDTid.xy) % int2(width, height), 0));
+    
+    output.z0 = random.x * 1000000 * (aOffset + 1);
+    output.z1 = random.y * 1000000 * (aOffset + 1);
+    output.z2 = random.z * 1000000 * (aOffset + 1);
+    output.z3 = random.w * 1000000 * (aOffset + 1);
+    
+    return output;
 }

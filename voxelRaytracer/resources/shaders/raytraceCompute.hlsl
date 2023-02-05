@@ -1,5 +1,6 @@
 RWTexture2D<float4> OutputTexture : register(u0);
 Texture3D<uint> sceneData : register(t0);
+StructuredBuffer<int> octreeData : register(t1);
 
 cbuffer constantBuffer : register(b0)
 {
@@ -12,14 +13,12 @@ cbuffer constantBuffer : register(b0)
     float4 camPixelOffsetHorizontal;
     float4 camPixelOffsetVertical;
 
-    
-    
     float4 padding[10];
 }
 
-#define SIZE_X 32
-#define SIZE_Y 32
-#define SIZE_Z 32
+#define SIZE_X 16
+#define SIZE_Y 16
+#define SIZE_Z 16
 
 #define VOXEL_SIZE 10
 #define eps 1./ 1080.f

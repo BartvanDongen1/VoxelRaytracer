@@ -58,7 +58,7 @@ void Graphics::beginFrame()
 
     // Record commands.
     const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    //commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 }
 
 void Graphics::endFrame()
@@ -109,8 +109,8 @@ void Graphics::renderFrame()
     CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1 + frameIndex, cbvSrvUavDescriptorSize);
     commandList->SetComputeRootDescriptorTable(1, descriptorHandle);
 
-    CD3DX12_GPU_DESCRIPTOR_HANDLE SceneTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
-    commandList->SetComputeRootDescriptorTable(2, SceneTextureDescriptorHandle);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE noiseTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
+    commandList->SetComputeRootDescriptorTable(2, noiseTextureDescriptorHandle);
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE octreeBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
     commandList->SetComputeRootDescriptorTable(3, octreeBufferDescriptorHandle);
@@ -160,8 +160,13 @@ void Graphics::copyComputeTextureToBackbuffer()
     TransitionResource(commandList.Get(), computeTexture[frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-void Graphics::updateCameraVariables(Camera& aCamera)
+void Graphics::updateCameraVariables(Camera& aCamera, int frameCount, bool foccused)
 {
+    constantBuffer->frameCount = frameCount;
+
+    constantBuffer->sampleCount = foccused == true ? 1 : 1;
+
+
     constantBuffer->camPosition = glm::vec4(aCamera.position, 0.f);
     constantBuffer->camDirection = glm::vec4(aCamera.getDirection(), 0.f);
     constantBuffer->camUpperLeftCorner = glm::vec4(aCamera.getUpperLeftCorner(), 0.f);
@@ -170,21 +175,21 @@ void Graphics::updateCameraVariables(Camera& aCamera)
     constantBuffer->camPixelOffsetVertical = glm::vec4(aCamera.getPixelOffsetVertical(), 0.f);
 }
 
-void Graphics::updateModelVariables(const VoxelModel& aModel)
+void Graphics::updateNoiseTexture(const Texture& aTexture)
 {
-    assert(aModel.sizeX == 32 && aModel.sizeY == 32 && aModel.sizeZ == 32);
+    assert(aTexture.textureWidth == 470 && aTexture.textureHeight == 470);
 
     ThrowIfFailed(commandAllocators[frameIndex]->Reset());
     ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), nullptr));
 
     //transition texture
-    auto myResourceBarrierBefore = CD3DX12_RESOURCE_BARRIER::Transition(sceneDataTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    auto myResourceBarrierBefore = CD3DX12_RESOURCE_BARRIER::Transition(noiseTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
     commandList->ResourceBarrier(1, &myResourceBarrierBefore);
 
     //copy over data
     ComPtr<ID3D12Resource> textureUploadHeap;
 
-    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(sceneDataTexture.Get(), 0, 1);
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(noiseTexture.Get(), 0, 1);
     auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
 
     auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -199,14 +204,14 @@ void Graphics::updateModelVariables(const VoxelModel& aModel)
         IID_PPV_ARGS(&textureUploadHeap)));
 
     D3D12_SUBRESOURCE_DATA textureData = {};
-    textureData.pData = aModel.data;
-    textureData.RowPitch = static_cast<long>(aModel.sizeX) * 4;
-    textureData.SlicePitch = textureData.RowPitch * aModel.sizeY;
+    textureData.pData = aTexture.textureData;
+    textureData.RowPitch = static_cast<long>(aTexture.textureWidth) * aTexture.bytesPerPixel;
+    textureData.SlicePitch = textureData.RowPitch * aTexture.textureHeight;
 
-    UpdateSubresources(commandList.Get(), sceneDataTexture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
+    UpdateSubresources(commandList.Get(), noiseTexture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
 
     //transition back
-    auto myResourceBarrierAfter = CD3DX12_RESOURCE_BARRIER::Transition(sceneDataTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    auto myResourceBarrierAfter = CD3DX12_RESOURCE_BARRIER::Transition(noiseTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     commandList->ResourceBarrier(1, &myResourceBarrierAfter);
 
     ThrowIfFailed(commandList->Close());
@@ -437,28 +442,39 @@ void Graphics::loadComputeStage()
         device->CreateUnorderedAccessView(computeTexture[0].Get(), nullptr, nullptr, uavHandle1);
         device->CreateUnorderedAccessView(computeTexture[1].Get(), nullptr, nullptr, uavHandle2);
     }
-    
-    //create 3D texture for the scene
+   
+    //create noise texture for random values in the shader
     {
-        const D3D12_RESOURCE_DESC myTexture3DDesc = CD3DX12_RESOURCE_DESC::Tex3D(DXGI_FORMAT_R32_UINT, 32, 32, 32);
+        // Describe and create a Texture2D.
+        D3D12_RESOURCE_DESC textureDesc = {};
+        textureDesc.MipLevels = 1;
+        textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        textureDesc.Width = 470;
+        textureDesc.Height = 470;
+        textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+        textureDesc.DepthOrArraySize = 1;
+        textureDesc.SampleDesc.Count = 1;
+        textureDesc.SampleDesc.Quality = 0;
+        textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
         ThrowIfFailed(
             device->CreateCommittedResource(
                 &myDefaultHeapProperties,
                 D3D12_HEAP_FLAG_NONE,
-                &myTexture3DDesc,
+                &textureDesc,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
                 nullptr,
-                IID_PPV_ARGS(sceneDataTexture.ReleaseAndGetAddressOf())));
-        sceneDataTexture->SetName(L"Scene Data Texture");
+                IID_PPV_ARGS(noiseTexture.ReleaseAndGetAddressOf())));
+        noiseTexture->SetName(L"Noise Texture");
 
         D3D12_SHADER_RESOURCE_VIEW_DESC mySceneDataDesc = {};
         mySceneDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        mySceneDataDesc.Format = myTexture3DDesc.Format;
-        mySceneDataDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+        mySceneDataDesc.Format = textureDesc.Format;
+        mySceneDataDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         mySceneDataDesc.Texture3D.MipLevels = 1;
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
-        device->CreateShaderResourceView(sceneDataTexture.Get(), &mySceneDataDesc, srvHandle);
+        device->CreateShaderResourceView(noiseTexture.Get(), &mySceneDataDesc, srvHandle);
     }
 
     //create structured buffer for the octree
@@ -501,6 +517,7 @@ void Graphics::loadComputeStage()
     D3D_SHADER_MACRO macros[] = { NULL, NULL };
 
     ID3DBlob* errorBlob = nullptr;
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeTest.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
@@ -510,12 +527,14 @@ void Graphics::loadComputeStage()
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     myRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+    //myRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1);
 
     CD3DX12_ROOT_PARAMETER1 myRootParameters[4];
     myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[3].InitAsDescriptorTable(1, &myRanges[3], D3D12_SHADER_VISIBILITY_ALL);
+    //myRootParameters[4].InitAsDescriptorTable(1, &myRanges[4], D3D12_SHADER_VISIBILITY_ALL);
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 

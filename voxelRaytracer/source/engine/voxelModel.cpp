@@ -47,8 +47,42 @@ void initRandomVoxels(VoxelModel* aModel, int aFillAmount)
 	{
 		bool myFilled = rand() % aFillAmount;
 
-		myFilled = !myFilled;
+		if (!myFilled)
+		{
+			int randomVoxelType = rand() % 100;
 
-		aModel->data[i] = myFilled;
+			if (randomVoxelType < 10)
+			{
+				//lights
+				if ((randomVoxelType % 2) == 1)
+				{
+					//yellow light
+					aModel->data[i] = 1;
+					continue;
+				}
+				else
+				{
+					//magenta light
+					aModel->data[i] = 2;
+					continue;
+				}
+
+
+			}
+
+			if (randomVoxelType < 20)
+			{
+				//reflections
+				aModel->data[i] = 3;
+				continue;
+			}
+
+			if (randomVoxelType < 100)
+			{
+				//diffuse
+				aModel->data[i] = 4;
+				continue;
+			}
+		}
 	}
 }

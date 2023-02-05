@@ -68,7 +68,7 @@ void Octree::init(VoxelModel* aModel)
 
 			assert(myX < 16 && myY < 16 && myZ < 16);
 
-			insertPoint(myX, myY, myZ, 1);
+			insertPoint(myX, myY, myZ, static_cast<uint8_t>(myPointData));
 		}
 	}
 }

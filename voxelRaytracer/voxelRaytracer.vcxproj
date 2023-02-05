@@ -107,6 +107,7 @@
     <ClCompile Include="source\engine\timer.cpp" />
     <ClCompile Include="source\engine\voxelModel.cpp" />
     <ClCompile Include="source\engine\voxelModelLoader.cpp" />
+    <ClCompile Include="source\engine\texture.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\engine\aabb.h" />
@@ -132,6 +133,7 @@
     <ClInclude Include="include\engine\timer.h" />
     <ClInclude Include="include\engine\voxelModel.h" />
     <ClInclude Include="include\engine\voxelModelLoader.h" />
+    <ClInclude Include="include\engine\texture.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
