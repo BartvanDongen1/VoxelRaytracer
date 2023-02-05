@@ -22,7 +22,7 @@ cbuffer constantBuffer : register(b0)
 #define eps 1./ 1080.f
 #define OCTREE_DEPTH_LEVELS 5
 #define MAX_STEPS 80
-#define MAX_BOUNCES 2
+#define MAX_BOUNCES 5
 
 struct RayStruct
 {
@@ -81,7 +81,11 @@ struct RandomState
 //RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
 
 RayStruct createRay(float2 windowPos);
+
+float3 reflectionRay(float3 aDirectionIn, float3 aNormal);
+
 VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale = 1.f);
+
 
 HitResult traverseOctree(RayStruct aRay);
 float2 intersectAABB(RayStruct aRay, float3 boxMin, float3 boxMax);
@@ -164,9 +168,16 @@ void main( uint3 DTid : SV_DispatchThreadID )
                 continue;
             }
             
-            if (hit.color < 3)
+            if (hit.color < 4)
             {
                 //reflection
+                float3 rayDirection = reflectionRay(myRay.direction, hit.hitNormal);
+                float3 hitPoint = myRay.origin + myRay.direction * hit.hitDistance;
+        
+                myRay.direction = rayDirection;
+                myRay.origin = hitPoint;
+                myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+                continue;
             }
         
             //diffusion
@@ -184,7 +195,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
         stackPointer = 0;
     }
     
-    OutputTexture[DTid.xy] = outColor / sampleCount;
+    OutputTexture[DTid.xy] += outColor / sampleCount;
 }
 
 RayStruct createRay(float2 windowPos)
@@ -200,40 +211,11 @@ RayStruct createRay(float2 windowPos)
     return myRay;
 }
 
-//RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed)
-//{
-//    RayStruct myRay;
-    
-//    int seed = (int) ((hitPosition.x + hitPosition.y - hitPosition.z) * 10000.f) + aSeed;
-    
-//    float3 direction;
-
-//    do
-//    {
-//        RandomOut randomStruct = random(-1, 1, aSeed);
-//        float x = randomStruct.randomNum;
-//        randomStruct = random(-1, 1, randomStruct.seed);
-//        float y = randomStruct.randomNum;
-//        randomStruct = random(-1, 1, randomStruct.seed);
-//        float z = randomStruct.randomNum;
-        
-//        direction = float3(x, y, z);
-
-//    } while (length(direction) > 1);
-
-//    direction = normalize(direction);
-    
-//    if (dot(direction, hitNormal) < 0)
-//    {
-//        direction *= -1;
-//    }
-
-//    myRay.origin = hitPosition;
-//    myRay.direction = direction;
-//    myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
-    
-//    return myRay;
-//}
+float3 reflectionRay(float3 aDirectionIn, float3 aNormal)
+{
+    float3 reflectionRayDir = aDirectionIn - (aNormal * 2 * dot(aDirectionIn, aNormal));
+    return normalize(reflectionRayDir);
+}
 
 VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale)
 {
@@ -281,7 +263,7 @@ VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale)
     if (results[1].distance < min.distance) min = results[1];
     if (results[2].distance < min.distance) min = results[2];
     
-    min.distance += 0.001f;
+    min.distance += 0.0001f;
     
     return min;
 }
@@ -445,7 +427,7 @@ HitResult traverseNode(NodeData aNode, RayStruct aRay, int aScale)
         if (currentScale == 1)
         {
             result.color = currentNode.color;
-            result.hitDistance = distance - 0.0011f;
+            result.hitDistance = distance - 0.00011f;
             
             return result;
         }
@@ -482,12 +464,12 @@ float4 colorIndexToColor(int aIndex)
     {
         case 1:
                 {
-                return float4(1, 0.5, 1, 1);
+                return float4(3, 1.5, 3, 1);
             }
             
         case 2:
                 {
-                return float4(1, 1, 0.5, 1);
+                return float4(3, 3, 1.5, 1);
             }
             
         case 3:
@@ -497,7 +479,7 @@ float4 colorIndexToColor(int aIndex)
             
         case 4:
                 {
-                return float4(0.5, 0.5, 0.5, 1);
+                return float4(0.8, 0.8, 0.8, 1);
             }
     }
     

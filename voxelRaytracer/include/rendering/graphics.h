@@ -37,8 +37,20 @@ struct ConstantBuffer
 	float padding[38];
 };
 
-constexpr size_t modulatedSize = sizeof(ConstantBuffer) % 256;
-static_assert(modulatedSize == 0);
+constexpr size_t modulatedSize1 = sizeof(ConstantBuffer) % 256;
+static_assert(modulatedSize1 == 0);
+
+struct AcummulationBuffer
+{
+	int framesAccumulated;
+	bool shouldAcummulate;
+
+	float padding[62];
+};
+
+constexpr size_t modulatedSize2 = sizeof(AcummulationBuffer) % 256;
+static_assert(modulatedSize2 == 0);
+
 
 class Graphics
 {
@@ -55,9 +67,10 @@ public:
 	void renderFrame();
 	void renderImGui(int aFPS);
 
-	void copyComputeTextureToBackbuffer();
+	void copyAccumulationBufferToBackbuffer();
 
 	void updateCameraVariables(Camera& aCamera, int frameCount, bool focussed);
+	void updateAccumulationVariables(bool aFocussed);
 	void updateNoiseTexture(const Texture& aTexture);
 	void updateOctreeVariables(const Octree& aOctree);
 
@@ -68,6 +81,7 @@ private:
 	void loadAssets();
 
 	void loadComputeStage();
+	void loadAccumulationStage();
 
 	void initImGui();
 
@@ -109,13 +123,12 @@ private:
 	ImGuiIO* io;
 
 	//compute shader stuff
-	Microsoft::WRL::ComPtr<ID3D12Resource>      computeTexture[2];
+	Microsoft::WRL::ComPtr<ID3D12Resource>      raytraceOutputTexture[2];
+	Microsoft::WRL::ComPtr<ID3D12Resource>      accumulationOutputTexture[2];
 	Microsoft::WRL::ComPtr<ID3D12Resource>      noiseTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      octreeBuffer;
 
 	UINT8* pCbvDataBeginOctree = nullptr;
-
-	//D3D12_RESOURCE_STATES computeTextureResourceState[2]; // current state of the compute texture, unordered or texture view
 
 	int threadGroupX;
 	int threadGroupY;
@@ -127,13 +140,27 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> computePipelineState;
 
+
+	Microsoft::WRL::ComPtr<ID3DBlob> accumulationShader;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> accumulationRootSignature;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> accumulationPipelineState;
+
 	// constant buffer for compute shader
-	ConstantBuffer* constantBuffer;
+	ConstantBuffer* computeConstantBuffer;
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> computeConstantBuffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource> computeConstantBufferResource;
 
-	UINT8* pCbvDataBegin = nullptr;
+	UINT8* pComputeCbvDataBegin = nullptr;
 	void* computeConstantBufferData = nullptr;
 	size_t computeConstantBufferSize{ 0 };
+
+	// constant buffer for frame accumalation shader
+	AcummulationBuffer* accumulationConstantBuffer;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> accumulationConstantBufferResource;
+
+	UINT8* pAccumulationCbvDataBegin = nullptr;
+	void* accumulationConstantBufferData = nullptr;
+	size_t accumulationConstantBufferSize{ 0 };
 };
 

@@ -76,6 +76,7 @@ void Renderer::update(float aDeltaTime)
 	//fps counter
 	frameTimeAccumilator += aDeltaTime;
 	framesThisSecond++;
+	totalFrames++;
 
 	if (frameTimeAccumilator > 0.2f)
 	{
@@ -84,14 +85,15 @@ void Renderer::update(float aDeltaTime)
 		framesThisSecond = 0;
 	}
 
-	graphics->updateCameraVariables(*camera, framesThisSecond, windowFocused);
+	graphics->updateCameraVariables(*camera, totalFrames, windowFocused);
+	graphics->updateAccumulationVariables(windowFocused);
 
 	//rendering
 	graphics->beginFrame();
 
 
 	graphics->renderFrame();
-	graphics->copyComputeTextureToBackbuffer();
+	graphics->copyAccumulationBufferToBackbuffer();
 
 	graphics->renderImGui(fps);
 

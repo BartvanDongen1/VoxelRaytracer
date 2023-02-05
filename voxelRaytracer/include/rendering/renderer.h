@@ -19,6 +19,7 @@ public:
 	void shutdown();
 private:
 	int framesThisSecond{ 0 };
+	int totalFrames{ 0 };
 	float frameTimeAccumilator{ 0.f };
 
 	int fps{ 0 };
