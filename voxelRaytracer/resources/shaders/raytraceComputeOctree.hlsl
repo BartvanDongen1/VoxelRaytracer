@@ -14,7 +14,7 @@ cbuffer constantBuffer : register(b0)
     float4 camPixelOffsetHorizontal;
     float4 camPixelOffsetVertical;
     
-    int frameCount;
+    int frameSeed;
     int sampleCount;
 }
 
@@ -81,6 +81,7 @@ struct RandomState
 //RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
 
 RayStruct createRay(float2 windowPos);
+RayStruct createRayAA(float2 aWindowPos, float2 aWindowSize, RandomState aRandomState);
 
 float3 reflectionRay(float3 aDirectionIn, float3 aNormal);
 
@@ -101,7 +102,7 @@ int wangHash(int aSeed);
 void updateRandom(inout RandomState rs);
 float3 random1(RandomState rs);
 
-RandomState initialize(int2 aDTid, int aOffset);
+RandomState initialize(int2 aDTid, int aFrameSeed);
 
 float3 randomInUnitSphere(float3 r);
 
@@ -109,93 +110,88 @@ float3 randomInUnitSphere(float3 r);
 void main( uint3 DTid : SV_DispatchThreadID )
 {
     float2 WindowLocal = ((float2) DTid.xy / maxThreadIter.xy);  
-    RandomState rs = initialize(DTid.xy, frameCount);
+    RandomState rs = initialize(DTid.xy, frameSeed);
     
     float4 outColor = float4(0, 0, 0, 1);
     
     HitResult hitResults[MAX_BOUNCES];
     int stackPointer = 0;
     
-    for (int i = 0; i < sampleCount; i++)
-    {
-        RayStruct myRay = createRay(WindowLocal);
+    RayStruct myRay = createRayAA(WindowLocal, maxThreadIter.xy, rs);
     
-        bool stop = false;
-        while (!stop)
+    bool stop = false;
+    while (!stop)
+    {
+        HitResult hit = traverseOctree(myRay);
+    
+        if (hit.hitDistance == FLOAT_MAX)
         {
-            HitResult hit = traverseOctree(myRay);
+            ////hit light
+            //float4 myOutColor = float4(0.1, 0.1, 0.3, 1.0);
         
-            if (hit.hitDistance == FLOAT_MAX)
+            //for (int i = stackPointer - 1; i > 0; i--)
+            //{
+            //    HitResult myHit = hitResults[i];
+            
+            //    myOutColor *= colorIndexToColor(myHit.color);
+            //}
+        
+            //outColor = myOutColor;
+            stop = true;
+            continue;
+        }
+    
+        hitResults[stackPointer] = hit;
+        stackPointer++;
+    
+        if (hit.color < 3)
+        {
+            //hit light
+            float4 myOutColor = colorIndexToColor(hit.color);
+        
+            for (int i = stackPointer - 1; i > 0; i--)
             {
-                ////hit light
-                //float4 myOutColor = float4(0.1, 0.1, 0.3, 1.0);
+                HitResult myHit = hitResults[i];
             
-                //for (int i = stackPointer - 1; i > 0; i--)
-                //{
-                //    HitResult myHit = hitResults[i];
-                
-                //    myOutColor *= colorIndexToColor(myHit.color);
-                //}
-            
-                //outColor = myOutColor;
-                stop = true;
-                continue;
+                myOutColor *= colorIndexToColor(myHit.color);
             }
         
-            hitResults[stackPointer] = hit;
-            stackPointer++;
+            outColor += myOutColor;
+            stop = true;
+            continue;
+        }
+    
+        if (stackPointer == MAX_BOUNCES)
+        {
+            stop = true;
+            continue;
+        }
         
-            if (hit.color < 3)
-            {
-                //hit light
-                float4 myOutColor = colorIndexToColor(hit.color);
-            
-                for (int i = stackPointer - 1; i > 0; i--)
-                {
-                    HitResult myHit = hitResults[i];
-                
-                    myOutColor *= colorIndexToColor(myHit.color);
-                }
-            
-                outColor += myOutColor;
-                stop = true;
-                continue;
-            }
-        
-            if (stackPointer == MAX_BOUNCES)
-            {
-                stop = true;
-                continue;
-            }
-            
-            if (hit.color < 4)
-            {
-                //reflection
-                float3 rayDirection = reflectionRay(myRay.direction, hit.hitNormal);
-                float3 hitPoint = myRay.origin + myRay.direction * hit.hitDistance;
-        
-                myRay.direction = rayDirection;
-                myRay.origin = hitPoint;
-                myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
-                continue;
-            }
-        
-            //diffusion
-            updateRandom(rs);
-            float3 random = random1(rs);
-        
-            float3 rayDirection = normalize(hit.hitNormal + randomInUnitSphere(random));
+        if (hit.color < 4)
+        {
+            //reflection
+            float3 rayDirection = reflectionRay(myRay.direction, hit.hitNormal);
             float3 hitPoint = myRay.origin + myRay.direction * hit.hitDistance;
-        
+    
             myRay.direction = rayDirection;
             myRay.origin = hitPoint;
             myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+            continue;
         }
-        
-        stackPointer = 0;
+    
+        //diffusion
+        updateRandom(rs);
+        float3 random = random1(rs);
+    
+        float3 rayDirection = normalize(hit.hitNormal + randomInUnitSphere(random));
+        float3 hitPoint = myRay.origin + myRay.direction * hit.hitDistance;
+    
+        myRay.direction = rayDirection;
+        myRay.origin = hitPoint;
+        myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
     }
     
-    OutputTexture[DTid.xy] += outColor / sampleCount;
+    OutputTexture[DTid.xy] += clamp(outColor, float4(0, 0, 0, 1), float4(1, 1, 1, 1));
 }
 
 RayStruct createRay(float2 windowPos)
@@ -203,6 +199,24 @@ RayStruct createRay(float2 windowPos)
     RayStruct myRay;
     
     myRay.origin = (camUpperLeftCorner + camPixelOffsetHorizontal * windowPos.x + camPixelOffsetVertical * windowPos.y).xyz;
+    myRay.direction = normalize(myRay.origin);
+    myRay.origin += camPosition.xyz;
+    
+    myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+    
+    return myRay;
+}
+
+RayStruct createRayAA(float2 aWindowPos, float2 aWindowSize, RandomState aRandomState)
+{
+    RayStruct myRay;
+    
+    float2 invSize = 1.f / aWindowSize;
+    
+    float2 offset = frac(0.00002328 * float2(aRandomState.z0, aRandomState.z1)) * invSize.x - (0.5 * invSize.x);
+    float2 myWindowPos = aWindowPos + offset;
+    
+    myRay.origin = (camUpperLeftCorner + camPixelOffsetHorizontal * myWindowPos.x + camPixelOffsetVertical * myWindowPos.y).xyz;
     myRay.direction = normalize(myRay.origin);
     myRay.origin += camPosition.xyz;
     
@@ -440,12 +454,12 @@ float4 colorIndexToColor(int aIndex)
     {
         case 1:
                 {
-                return float4(3, 1.5, 3, 1);
+                return float4(1.5, 1.5, 1.5, 1);
             }
             
         case 2:
                 {
-                return float4(3, 3, 1.5, 1);
+                return float4(1.5, 1.5, 1.5, 1);
             }
             
         case 3:
@@ -521,7 +535,7 @@ float3 randomInUnitSphere(float3 r)
     return p;
 }
 
-RandomState initialize(int2 aDTid, int aOffset)
+RandomState initialize(int2 aDTid, int aFrameSeed)
 {
     RandomState output;
     
@@ -530,10 +544,10 @@ RandomState initialize(int2 aDTid, int aOffset)
     
     float4 random = noiseTexture.Load(int3((aDTid.xy) % int2(width, height), 0));
     
-    output.z0 = random.x * 1000000 * (aOffset + 1);
-    output.z1 = random.y * 1000000 * (aOffset + 1);
-    output.z2 = random.z * 1000000 * (aOffset + 1);
-    output.z3 = random.w * 1000000 * (aOffset + 1);
+    output.z0 = random.x * 1000000 + aFrameSeed;
+    output.z1 = random.y * 1000000 + aFrameSeed;
+    output.z2 = random.z * 1000000 + aFrameSeed;
+    output.z3 = random.w * 1000000 + aFrameSeed;
     
     return output;
 }

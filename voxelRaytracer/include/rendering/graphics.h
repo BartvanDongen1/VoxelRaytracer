@@ -31,7 +31,7 @@ struct ConstantBuffer
 	glm::vec4 camPixelOffsetHorizontal;
 	glm::vec4 camPixelOffsetVertical;
 
-	int frameCount;
+	int frameSeed;
 	int sampleCount;
 
 	float padding[38];
@@ -69,7 +69,7 @@ public:
 
 	void copyAccumulationBufferToBackbuffer();
 
-	void updateCameraVariables(Camera& aCamera, int frameCount, bool focussed);
+	void updateCameraVariables(Camera& aCamera, int aFrameSeed, bool aFocussed);
 	void updateAccumulationVariables(bool aFocussed);
 	void updateNoiseTexture(const Texture& aTexture);
 	void updateOctreeVariables(const Octree& aOctree);

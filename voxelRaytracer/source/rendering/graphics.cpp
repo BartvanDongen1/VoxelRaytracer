@@ -108,7 +108,7 @@ void Graphics::renderFrame()
 
     commandList->SetComputeRootDescriptorTable(0, cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart());
 
-    CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1 + frameIndex, cbvSrvUavDescriptorSize);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
     commandList->SetComputeRootDescriptorTable(1, descriptorHandle);
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE noiseTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
@@ -124,12 +124,12 @@ void Graphics::renderFrame()
     commandList->SetComputeRootSignature(accumulationRootSignature.Get());
 
     {
-        CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle1(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1 + frameIndex, cbvSrvUavDescriptorSize);
+        CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle1(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
         commandList->SetComputeRootDescriptorTable(0, descriptorHandle1);
     }
 
     {
-        CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle2(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 5 + frameIndex, cbvSrvUavDescriptorSize);
+        CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle2(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
         commandList->SetComputeRootDescriptorTable(1, descriptorHandle2);
     }
 
@@ -175,21 +175,30 @@ void Graphics::copyAccumulationBufferToBackbuffer()
 {
     // transition resources to get coppied
     TransitionResource(commandList.Get(), renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-    TransitionResource(commandList.Get(), accumulationOutputTexture[frameIndex].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    TransitionResource(commandList.Get(), accumulationOutputTexture[0].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-    commandList.Get()->CopyResource(renderTargets[frameIndex].Get(), accumulationOutputTexture[frameIndex].Get());
+    commandList.Get()->CopyResource(renderTargets[frameIndex].Get(), accumulationOutputTexture[0].Get());
 
     // transition resources back to original state
     TransitionResource(commandList.Get(), renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    TransitionResource(commandList.Get(), accumulationOutputTexture[frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    TransitionResource(commandList.Get(), accumulationOutputTexture[0].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
-void Graphics::updateCameraVariables(Camera& aCamera, int frameCount, bool foccused)
+int wangHash(int aSeed)
 {
-    computeConstantBuffer->frameCount = frameCount;
+    aSeed = (aSeed ^ 61) ^ (aSeed >> 16);
+    aSeed *= 9;
+    aSeed = aSeed ^ (aSeed >> 4);
+    aSeed *= 0x27d4eb2d;
+    aSeed = aSeed ^ (aSeed >> 15);
+    return aSeed;
+}
 
-    computeConstantBuffer->sampleCount = foccused == true ? 1 : 1;
+void Graphics::updateCameraVariables(Camera& aCamera, int aFrameSeed, bool aFocussed)
+{
+    computeConstantBuffer->frameSeed = wangHash(aFrameSeed);
 
+    computeConstantBuffer->sampleCount = aFocussed == true ? 1 : 1;
 
     computeConstantBuffer->camPosition = glm::vec4(aCamera.position, 0.f);
     computeConstantBuffer->camDirection = glm::vec4(aCamera.getDirection(), 0.f);
@@ -462,24 +471,24 @@ void Graphics::loadComputeStage()
                 IID_PPV_ARGS(raytraceOutputTexture[0].ReleaseAndGetAddressOf())));
         raytraceOutputTexture[0]->SetName(L"compute Texture 0");
 
-        ThrowIfFailed(
-            device->CreateCommittedResource(
-                &myDefaultHeapProperties,
-                D3D12_HEAP_FLAG_NONE,
-                &myTextureDesc,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                nullptr,
-                IID_PPV_ARGS(raytraceOutputTexture[1].ReleaseAndGetAddressOf())));
-        raytraceOutputTexture[1]->SetName(L"compute Texture 1");
+        //ThrowIfFailed(
+        //    device->CreateCommittedResource(
+        //        &myDefaultHeapProperties,
+        //        D3D12_HEAP_FLAG_NONE,
+        //        &myTextureDesc,
+        //        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        //        nullptr,
+        //        IID_PPV_ARGS(raytraceOutputTexture[1].ReleaseAndGetAddressOf())));
+        //raytraceOutputTexture[1]->SetName(L"compute Texture 1");
 
         threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT;
         threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT;
 
         // create uav
         CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
-        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
+        //CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
         device->CreateUnorderedAccessView(raytraceOutputTexture[0].Get(), nullptr, nullptr, uavHandle1);
-        device->CreateUnorderedAccessView(raytraceOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
+        //device->CreateUnorderedAccessView(raytraceOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
     }
    
     //create noise texture for random values in the shader
@@ -652,7 +661,7 @@ void Graphics::loadAccumulationStage()
                 IID_PPV_ARGS(accumulationOutputTexture[0].ReleaseAndGetAddressOf())));
         accumulationOutputTexture[0]->SetName(L"accumulation Texture 0");
 
-        ThrowIfFailed(
+        /*ThrowIfFailed(
             device->CreateCommittedResource(
                 &myDefaultHeapProperties,
                 D3D12_HEAP_FLAG_NONE,
@@ -660,16 +669,16 @@ void Graphics::loadAccumulationStage()
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 nullptr,
                 IID_PPV_ARGS(accumulationOutputTexture[1].ReleaseAndGetAddressOf())));
-        accumulationOutputTexture[1]->SetName(L"accumulation Texture 1");
+        accumulationOutputTexture[1]->SetName(L"accumulation Texture 1");*/
 
         threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT;
         threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT;
 
         // create uav
         CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
-        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
+        //CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
         device->CreateUnorderedAccessView(accumulationOutputTexture[0].Get(), nullptr, nullptr, uavHandle1);
-        device->CreateUnorderedAccessView(accumulationOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
+        //device->CreateUnorderedAccessView(accumulationOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
     }
 
     //create the constant buffer for frame accumulation shader
