@@ -18,6 +18,7 @@ cbuffer constantBuffer : register(b0)
     int sampleCount;
 }
 
+
 #define FLOAT_MAX 3.402823466e+38F
 #define eps 1./ 1080.f
 #define OCTREE_DEPTH_LEVELS 5
@@ -124,6 +125,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     {
         HitResult hit = traverseOctree(myRay);
     
+        // no hit
         if (hit.hitDistance == FLOAT_MAX)
         {
             ////hit light
@@ -144,6 +146,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
         hitResults[stackPointer] = hit;
         stackPointer++;
     
+        //hit light
         if (hit.color < 3)
         {
             //hit light
@@ -161,12 +164,14 @@ void main( uint3 DTid : SV_DispatchThreadID )
             continue;
         }
     
+        // max bounces reached
         if (stackPointer == MAX_BOUNCES)
         {
             stop = true;
             continue;
         }
         
+        //reflection
         if (hit.color < 4)
         {
             //reflection
@@ -448,6 +453,47 @@ HitResult traverseNode(NodeData aNode, RayStruct aRay, int aScale)
     return result;
 }
 
+
+HitResult traverseNode2(NodeData aNode, RayStruct aRay, int aScale)
+{
+    //each node can have 4 intersecting octants
+    TraversalItem traversalStack[OCTREE_DEPTH_LEVELS * 4];
+    int stackPointer = 1;
+    
+    HitResult result = hitResultDefault();
+    
+    // put top node on array    
+    TraversalItem myInitialItem;
+    myInitialItem.aNode = aNode;
+    myInitialItem.aScale = aScale;
+    
+    traversalStack[0] = myInitialItem;
+    
+    //loop until array is empty
+    while (stackPointer > 0)
+    {
+        NodeData currentNode = traversalStack[stackPointer - 1].aNode;
+        int currentScale = traversalStack[stackPointer - 1].aScale;
+        
+        
+        //find all intersecting child nodes of current node with ray and put them in array in order of furthest to closest
+    
+        if (currentScale == 1)
+        {
+            result.color = currentNode.color;
+            result.hitDistance = 0; //implement later
+            
+            return result;
+        }
+
+        // pop from array top
+        stackPointer--;    
+    }
+    
+    return result;
+
+}
+
 float4 colorIndexToColor(int aIndex)
 {
     switch (aIndex)
@@ -469,7 +515,7 @@ float4 colorIndexToColor(int aIndex)
             
         case 4:
                 {
-                return float4(0.8, 0.8, 0.8, 1);
+                return float4(0.7, 0.7, 0.7, 1);
             }
     }
     

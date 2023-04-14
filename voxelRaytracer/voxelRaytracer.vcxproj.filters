@@ -81,6 +81,18 @@
     <ClCompile Include="source\engine\texture.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="source\rendering\imguiWindowManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\rendering\imgui-docking\implot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\rendering\imgui-docking\implot_demo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\rendering\imgui-docking\implot_items.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\window.h">
@@ -153,6 +165,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\engine\texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rendering\imguiWindowManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rendering\imgui-docking\implot_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rendering\imgui-docking\implot.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

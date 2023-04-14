@@ -2,6 +2,10 @@
 #include "window.h"
 #include "helper.h"
 
+#include "imgui-docking/imgui_impl_dx12.h"
+#include "imgui-docking/imgui_impl_win32.h"
+#include "rendering\imgui-docking\implot.h"
+
 using namespace Microsoft::WRL;
 
 Graphics::Graphics()
@@ -33,6 +37,9 @@ void Graphics::shutdown()
     // imgui cleanup
     if (pd3dSrvDescHeap) { pd3dSrvDescHeap->Release(); pd3dSrvDescHeap = NULL; }
 
+    ImPlot::DestroyContext();
+    //ImGui::DestroyContext(); this causes an error for some reason
+
     CloseHandle(fenceEvent);
 }
 
@@ -61,6 +68,11 @@ void Graphics::beginFrame()
     // Record commands.
     const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     //commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
 }
 
 void Graphics::endFrame()
@@ -142,20 +154,8 @@ void Graphics::renderFrame()
     commandList->Dispatch(threadGroupX, threadGroupY, 1);
 }
 
-void Graphics::renderImGui(int aFPS)
+void Graphics::renderImGui()
 {
-    // Start the Dear ImGui frame
-    ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-
-    bool windowOpen = true;
-
-    ImGui::Begin("settings", &windowOpen, ImGuiWindowFlags_None);
-    ImGui::Text("current FPS: %i", aFPS);
-    ImGui::Text("accumulated frames: %i", accumulationConstantBuffer->framesAccumulated);
-    ImGui::End();
-
     // Rendering
     ImGui::Render();
 
@@ -194,9 +194,11 @@ int wangHash(int aSeed)
     return aSeed;
 }
 
-void Graphics::updateCameraVariables(Camera& aCamera, int aFrameSeed, bool aFocussed)
+static int sFrameCount = 0;
+
+void Graphics::updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize)
 {
-    computeConstantBuffer->frameSeed = wangHash(aFrameSeed);
+    computeConstantBuffer->frameSeed = wangHash(sFrameCount++);
 
     computeConstantBuffer->sampleCount = aFocussed == true ? 1 : 1;
 
@@ -206,6 +208,8 @@ void Graphics::updateCameraVariables(Camera& aCamera, int aFrameSeed, bool aFocu
 
     computeConstantBuffer->camPixelOffsetHorizontal = glm::vec4(aCamera.getPixelOffsetHorizontal(), 0.f);
     computeConstantBuffer->camPixelOffsetVertical = glm::vec4(aCamera.getPixelOffsetVertical(), 0.f);
+
+    computeConstantBuffer->octreeSize = aSize;
 }
 
 void Graphics::updateAccumulationVariables(bool aFocussed)
@@ -269,7 +273,7 @@ void Graphics::updateNoiseTexture(const Texture& aTexture)
     waitForGpu();
 }
 
-void Graphics::updateOctreeVariables(const Octree& aOctree)
+void Graphics::updateOctreeVariables(const Octree2& aOctree)
 {
     // Get a pointer to the mapped data
     void* mappedData;
@@ -277,12 +281,16 @@ void Graphics::updateOctreeVariables(const Octree& aOctree)
     CD3DX12_RANGE readRange(0, 0);
     ThrowIfFailed(octreeBuffer->Map(0, &readRange, &mappedData));
 
+    size_t test = aOctree.getSize() * sizeof(OctreeElement[8]);
+
     // Update the data
-    memcpy(mappedData, aOctree.getData(), 4681 * sizeof(int));
+    memcpy(mappedData, aOctree.getData(), test);
 
     // Unmap the buffer
     octreeBuffer->Unmap(0, &readRange);
 
+    // set const buffer varaible for ready the octree properly later
+    computeConstantBuffer->octreeLayerCount = aOctree.getLayerCount();
 }
 
 void Graphics::updateConstantBuffer()
@@ -530,8 +538,8 @@ void Graphics::loadComputeStage()
         auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
         D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
-        // 4681 is the size of my current octree
-        myAllocationInfo.SizeInBytes = 4681 * sizeof(int);
+        // max size of 16x16x16 octree
+        myAllocationInfo.SizeInBytes = 586 * sizeof(OctreeElement[8]);
         myAllocationInfo.Alignment = 0;
 
         const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
@@ -551,8 +559,8 @@ void Graphics::loadComputeStage()
         myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         myOctreeDataDesc.Format = DXGI_FORMAT_R32_SINT;
         myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        // 4681 is the size of my current octree
-        myOctreeDataDesc.Buffer.NumElements = 4681;
+        // 586 is the size of my current octree
+        myOctreeDataDesc.Buffer.NumElements = 586;
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
         device->CreateShaderResourceView(octreeBuffer.Get(), &myOctreeDataDesc, srvHandle);
@@ -564,9 +572,9 @@ void Graphics::loadComputeStage()
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
     D3D_SHADER_MACRO macros[] = { NULL, NULL };
 
-    ID3DBlob* errorBlob = nullptr;
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeTest.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeRework.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
@@ -767,6 +775,7 @@ void Graphics::initImGui()
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     io = &ImGui::GetIO(); (void)io;
     io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls

@@ -86,3 +86,11 @@ void initRandomVoxels(VoxelModel* aModel, int aFillAmount)
 		}
 	}
 }
+
+void initFilled(VoxelModel* aModel)
+{
+	for (int i = 0; i < aModel->sizeX * aModel->sizeY * aModel->sizeZ; i++)
+	{
+		aModel->data[i] = 1;
+	}
+}

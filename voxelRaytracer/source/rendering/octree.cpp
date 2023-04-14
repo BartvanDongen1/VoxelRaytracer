@@ -189,3 +189,128 @@ void Octree::insertPoint(int aX, int aY, int aZ, uint8_t aColor)
 		rawData[myLayer4Offset] = myData;
 	}
 }
+
+void Octree2::init(VoxelModel* aModel)
+{
+	init(aModel->sizeX, aModel->sizeY, aModel->sizeZ);
+
+	for (int i = 0; i < aModel->sizeX * aModel->sizeY * aModel->sizeZ; i++)
+	{
+		uint32_t myPointData = aModel->data[i];
+
+		if (myPointData)
+		{
+			int myX = i % 16;
+			int myY = (i / 16) % 16;
+			int myZ = i / (16 * 16);
+
+			assert(myX < 16 && myY < 16 && myZ < 16);
+
+			OctreeItem myItem;
+			myItem.color = glm::vec3(1, 1, 1);
+
+			insertItem(myX, myY, myZ, myItem);
+		}
+		else
+		{
+			//LOG_ERROR("huh");
+		}
+	}
+}
+
+void Octree2::init(int aSizeX, int aSizeY, int aSizeZ)
+{
+	int myMaxSize = std::max(std::max(aSizeX, aSizeY), aSizeZ);
+
+	assert(myMaxSize > 1);
+
+	layerCount = 1;
+	int myNextMultiple = 1;
+	while (myNextMultiple < myMaxSize) {
+		myNextMultiple *= 2;
+		layerCount++;
+	}
+
+	size = myNextMultiple;
+}
+
+void Octree2::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
+{
+	assert(aX < size&& aX >= 0);
+	assert(aY < size&& aY >= 0);
+	assert(aZ < size&& aZ >= 0);
+
+	// push top level node and first sub nodes
+	if (!flatTree.size())
+	{
+		flatTree.push_back({});
+		flatTree.push_back({});
+	}
+
+	// top level node will be the index 0 in the array that is index 0 in the vector
+	OctreeNode* myTopLevelNode = &flatTree[0][0].node;
+	myTopLevelNode->childrenIndex = 1; // child index of the top level node will always be 1
+
+	int myScale = size;
+	int myNodeIndex = 1;
+	
+	int myLocalX = aX, myLocalY = aY, myLocalZ = aZ;
+	OctreeNode* myCurrentNode = myTopLevelNode;
+	while (true)
+	{
+		int octantX = (myLocalX >= (myScale / 2.f));
+		int octantY = (myLocalY >= (myScale / 2.f));
+		int octantZ = (myLocalZ >= (myScale / 2.f));
+
+		myLocalX -= octantX * (myScale / 2);
+		myLocalY -= octantY * (myScale / 2);
+		myLocalZ -= octantZ * (myScale / 2);
+
+		int myOctantOffset = octantX + octantY * 2 + octantZ * 4;
+
+		if (myCurrentNode)
+		{
+			int test = (1 << myOctantOffset);
+			myCurrentNode->children |= (1 << myOctantOffset);
+		}
+
+		if (myScale == 2)
+		{
+			//place leaf node
+			flatTree[myNodeIndex][myOctantOffset].item = aItem;
+			break;
+		}
+
+		myCurrentNode = &flatTree[myNodeIndex][myOctantOffset].node;
+
+		if (myCurrentNode->childrenIndex == 0)
+		{
+			//set new children index
+			myCurrentNode->childrenIndex = flatTree.size();
+
+			// create new nodes
+			flatTree.push_back({});
+
+			// reassign the current node, because reallocation of memory could've moved it
+			myCurrentNode = &flatTree[myNodeIndex][myOctantOffset].node;
+		}
+
+		myNodeIndex = myCurrentNode->childrenIndex;
+		myScale /= 2;
+	}
+}
+
+const void* Octree2::getData() const
+{
+	return &flatTree[0];
+}
+
+size_t Octree2::getSize() const
+{
+	return flatTree.size();
+}
+
+int Octree2::getLayerCount() const
+{
+	return layerCount;
+}

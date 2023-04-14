@@ -13,9 +13,7 @@
 #include <wrl.h>
 #include "d3dx12.h"
 
-#include "rendering/imgui-docking/imgui.h"
-#include "imgui-docking/imgui_impl_dx12.h"
-#include "imgui-docking/imgui_impl_win32.h"
+struct ImGuiIO;
 
 #define FRAME_COUNT 2
 #define SHADER_THREAD_COUNT 8
@@ -34,7 +32,11 @@ struct ConstantBuffer
 	int frameSeed;
 	int sampleCount;
 
-	float padding[38];
+	int octreeLayerCount;
+
+	int octreeSize;
+
+	float padding[36];
 };
 
 constexpr size_t modulatedSize1 = sizeof(ConstantBuffer) % 256;
@@ -51,9 +53,9 @@ struct AcummulationBuffer
 constexpr size_t modulatedSize2 = sizeof(AcummulationBuffer) % 256;
 static_assert(modulatedSize2 == 0);
 
-
 class Graphics
 {
+	friend class ImguiWindowManager;
 public:
 	Graphics();
 	~Graphics();
@@ -65,14 +67,14 @@ public:
 	void endFrame();
 
 	void renderFrame();
-	void renderImGui(int aFPS);
+	void renderImGui();
 
 	void copyAccumulationBufferToBackbuffer();
 
-	void updateCameraVariables(Camera& aCamera, int aFrameSeed, bool aFocussed);
+	void updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize);
 	void updateAccumulationVariables(bool aFocussed);
 	void updateNoiseTexture(const Texture& aTexture);
-	void updateOctreeVariables(const Octree& aOctree);
+	void updateOctreeVariables(const Octree2& aOctree);
 
 private:
 	void updateConstantBuffer();

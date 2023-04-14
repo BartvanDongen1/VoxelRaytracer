@@ -1,5 +1,6 @@
 #pragma once
 #include "rendering\octree.h"
+#include "rendering\imguiWindowManager.h"
 
 class Graphics;
 class Window;
@@ -18,12 +19,6 @@ public:
 	void update(float aDeltaTime);
 	void shutdown();
 private:
-	int framesThisSecond{ 0 };
-	int totalFrames{ 0 };
-	float frameTimeAccumilator{ 0.f };
-
-	int fps{ 0 };
-
 	Graphics* graphics;
 	
 	VoxelModel* scene;
@@ -31,6 +26,10 @@ private:
 	Controller* cameraController;
 	Camera* camera;
 	Octree* octree;
+
+	Octree2* octree2;
+
+	ImguiWindowManager imguiWindow;
 
 	float offset = 0;
 

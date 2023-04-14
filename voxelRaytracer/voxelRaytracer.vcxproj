@@ -86,6 +86,10 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="source\rendering\imgui-docking\implot.cpp" />
+    <ClCompile Include="source\rendering\imgui-docking\implot_demo.cpp" />
+    <ClCompile Include="source\rendering\imgui-docking\implot_items.cpp" />
+    <ClCompile Include="source\rendering\imguiWindowManager.cpp" />
     <ClCompile Include="source\engine\aabb.cpp" />
     <ClCompile Include="source\engine\meshModel.cpp" />
     <ClCompile Include="source\engine\controller.cpp" />
@@ -110,6 +114,9 @@
     <ClCompile Include="source\engine\texture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\rendering\imgui-docking\implot.h" />
+    <ClInclude Include="include\rendering\imgui-docking\implot_internal.h" />
+    <ClInclude Include="include\rendering\imguiWindowManager.h" />
     <ClInclude Include="include\engine\aabb.h" />
     <ClInclude Include="include\engine\controller.h" />
     <ClInclude Include="include\rendering\camera.h" />

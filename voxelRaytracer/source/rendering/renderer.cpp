@@ -21,6 +21,10 @@ Renderer::~Renderer()
 
 void Renderer::init()
 {
+
+	OctreeItem myItem;
+	myItem.color = glm::vec3(1, 1, 1);
+
 	Window::init(1920, 1080, "Voxel Renderer");
 	graphics->init();
 	
@@ -30,16 +34,34 @@ void Renderer::init()
 	octree = new Octree();
 
 	scene = new VoxelModel(16, 16, 16);
-	initRandomVoxels(scene, 5);
+	//initRandomVoxels(scene, 5);
+	initFilled(scene);
+	//scene->data[0] = 1;
+	//scene->data[15] = 1;
+	//scene->data[240] = 1;
+	//scene->data[255] = 1;
+	//scene->data[3840] = 1;
+	//scene->data[3855] = 1;
+	//scene->data[4080] = 1;
+	//scene->data[4095] = 1;
+
+
 	//VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
 	//VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
-	//scene = VoxelModelLoader::getModel("resources/models/sponza/sponza.obj", 32);
+	//scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
 
 	octree->init(scene);
-	graphics->updateOctreeVariables(*octree);
+
+	octree2 = new Octree2();
+	octree2->init(scene);
+
+	//Octree2* myOctree = new Octree2();
+	//myOctree->init(scene);
+
+	graphics->updateOctreeVariables(*octree2);
 
 	//scene->combineModel(0, 0, 0, myTeapot);
 }
@@ -73,19 +95,7 @@ void Renderer::update(float aDeltaTime)
 		cameraController->update(aDeltaTime);
 	}
 
-	//fps counter
-	frameTimeAccumilator += aDeltaTime;
-	framesThisSecond++;
-	totalFrames++;
-
-	if (frameTimeAccumilator > 0.2f)
-	{
-		frameTimeAccumilator -= 0.2f;
-		fps = framesThisSecond * 5;
-		framesThisSecond = 0;
-	}
-
-	graphics->updateCameraVariables(*camera, totalFrames, windowFocused);
+	graphics->updateCameraVariables(*camera, windowFocused, octree2->getSize());
 	graphics->updateAccumulationVariables(windowFocused);
 
 	//rendering
@@ -95,7 +105,9 @@ void Renderer::update(float aDeltaTime)
 	graphics->renderFrame();
 	graphics->copyAccumulationBufferToBackbuffer();
 
-	graphics->renderImGui(fps);
+	//imgui
+	imguiWindow.updateAndRender(*graphics, aDeltaTime);
+	graphics->renderImGui();
 
 	graphics->endFrame();
 
