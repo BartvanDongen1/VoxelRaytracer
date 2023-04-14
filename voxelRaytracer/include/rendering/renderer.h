@@ -27,8 +27,6 @@ private:
 	Camera* camera;
 	Octree* octree;
 
-	Octree2* octree2;
-
 	ImguiWindowManager imguiWindow;
 
 	float offset = 0;

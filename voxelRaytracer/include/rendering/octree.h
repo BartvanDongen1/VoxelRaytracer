@@ -5,22 +5,6 @@
 #include <vector>
 #include <array>
 
-class Octree
-{
-public:
-	Octree();
-	~Octree();
-
-	void init(VoxelModel* aModel);
-
-	int* getData() const;
-private:
-	void insertPoint(int aX, int aY, int aZ, uint8_t aColor);
-
-	int* rawData;
-	bool constructed{ false };
-};
-
 //16 btyes
 struct OctreeItem
 {
@@ -32,18 +16,6 @@ struct OctreeItem
 //16 btyes
 struct OctreeNode
 {
-	/*enum class Octant : uint8_t 
-	{
-		LeftTopFront =		0,
-		RightTopFront =		1,
-		LeftBottomFront =	2,
-		RightBottomFront =	3,
-		LeftTopBack =		4,
-		RightTopBack =		5,
-		LeftBottomBack =	6,
-		RightBottomBack =	7,
-	};*/
-
 	uint32_t childrenIndex{ 0 };
 	uint32_t children{ 0 }; // lowest 8 bits used as flags, 24 bits of padding
 
@@ -59,11 +31,11 @@ union OctreeElement
 
 constexpr size_t ElementSize = sizeof(OctreeElement);
 
-class Octree2
+class Octree
 {
 public:
-	Octree2() {};
-	~Octree2() {};
+	Octree() {};
+	~Octree() {};
 
 	void init(VoxelModel* aModel);
 	void init(int aSizeX, int aSizeY, int aSizeZ);

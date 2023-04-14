@@ -131,6 +131,10 @@ void Graphics::renderFrame()
 
     commandList->SetPipelineState(computePipelineState.Get());
     commandList->Dispatch(threadGroupX, threadGroupY, 1);
+    
+    auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+
+    commandList->ResourceBarrier(1, &barrier);
 
     //accumulation shader
     commandList->SetComputeRootSignature(accumulationRootSignature.Get());
@@ -152,6 +156,8 @@ void Graphics::renderFrame()
 
     commandList->SetPipelineState(accumulationPipelineState.Get());
     commandList->Dispatch(threadGroupX, threadGroupY, 1);
+
+    commandList->ResourceBarrier(1, &barrier);
 }
 
 void Graphics::renderImGui()
@@ -273,7 +279,7 @@ void Graphics::updateNoiseTexture(const Texture& aTexture)
     waitForGpu();
 }
 
-void Graphics::updateOctreeVariables(const Octree2& aOctree)
+void Graphics::updateOctreeVariables(const Octree& aOctree)
 {
     // Get a pointer to the mapped data
     void* mappedData;
@@ -539,7 +545,9 @@ void Graphics::loadComputeStage()
 
         D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
         // max size of 16x16x16 octree
-        myAllocationInfo.SizeInBytes = 586 * sizeof(OctreeElement[8]);
+        //myAllocationInfo.SizeInBytes = 586 * sizeof(OctreeElement[8]);
+        //myAllocationInfo.SizeInBytes = 3004 * sizeof(OctreeElement[8]);
+        myAllocationInfo.SizeInBytes = 15584 * sizeof(OctreeElement[8]);
         myAllocationInfo.Alignment = 0;
 
         const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
@@ -560,7 +568,9 @@ void Graphics::loadComputeStage()
         myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
         myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         // 586 is the size of my current octree
-        myOctreeDataDesc.Buffer.NumElements = 586;
+        //myOctreeDataDesc.Buffer.NumElements = 586;
+        //myOctreeDataDesc.Buffer.NumElements = 3004;
+        myOctreeDataDesc.Buffer.NumElements = 15584;
         myOctreeDataDesc.Buffer.StructureByteStride = sizeof(OctreeElement[8]);
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
@@ -571,7 +581,7 @@ void Graphics::loadComputeStage()
     UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
-    D3D_SHADER_MACRO macros[] = { NULL, NULL };
+    D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "10", NULL, NULL};
 
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeTest.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));

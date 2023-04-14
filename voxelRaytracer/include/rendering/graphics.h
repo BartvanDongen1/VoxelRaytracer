@@ -74,7 +74,7 @@ public:
 	void updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize);
 	void updateAccumulationVariables(bool aFocussed);
 	void updateNoiseTexture(const Texture& aTexture);
-	void updateOctreeVariables(const Octree2& aOctree);
+	void updateOctreeVariables(const Octree& aOctree);
 
 private:
 	void updateConstantBuffer();
@@ -146,6 +146,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3DBlob> accumulationShader;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> accumulationRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> accumulationPipelineState;
+
+	
 
 	// constant buffer for compute shader
 	ConstantBuffer* computeConstantBuffer;

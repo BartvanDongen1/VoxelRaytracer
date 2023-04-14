@@ -51,7 +51,7 @@ cbuffer constantBuffer : register(b0)
     int octreeSize;
 }
 
-
+//#define MAX_STACK_SIZE 0 
 #define FLOAT_MAX 3.402823466e+38F
 #define eps 1./ 1080.f
 #define OCTREE_DEPTH_LEVELS 5
@@ -77,9 +77,10 @@ struct NodeData
 struct HitResult
 {
     float hitDistance;
-    int color;
-    int loopCount;
     float3 hitNormal;
+    OctreeItem item;
+    
+    int loopCount;
 };
 
 struct VoxelTraverseResult
@@ -92,7 +93,6 @@ HitResult hitResultDefault()
 {
     HitResult result;
     result.hitDistance = FLOAT_MAX;
-    result.color - 1;
     result.loopCount = 0;
     result.hitNormal = float3(0, 0, 0);
     return result;
@@ -113,28 +113,16 @@ struct RandomState
 };
 
 //RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
-int ray_octree_traversal(RayStruct aRay);
-
+HitResult ray_octree_traversal(RayStruct aRay);
 
 RayStruct createRay(float2 windowPos);
 RayStruct createRayAA(float2 aWindowPos, float2 aWindowSize, RandomState aRandomState);
 
 float3 reflectionRay(float3 aDirectionIn, float3 aNormal);
 
-VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale = 1.f);
-
-
-HitResult traverseOctree(RayStruct aRay);
-float2 intersectAABB(RayStruct aRay, float3 boxMin, float3 boxMax);
-
-NodeData getNodeAtOffset(int aOffset);
-HitResult traverseNode(NodeData aNode, RayStruct aRay, int aScale);
-
-float4 colorIndexToColor(int aIndex);
-
 int xorShift32(int aSeed);
 int wangHash(int aSeed);
-//RandomOut random(float aMin, float aMax, int aSeed);
+
 void updateRandom(inout RandomState rs);
 float3 random1(RandomState rs);
 
@@ -153,69 +141,19 @@ void main( uint3 DTid : SV_DispatchThreadID )
     HitResult hitResults[MAX_BOUNCES];
     int stackPointer = 0;
     
-    RayStruct myRay = createRay(WindowLocal);
+    RayStruct myRay = createRayAA(WindowLocal, maxThreadIter.xy, rs);
     
-    int result = ray_octree_traversal(myRay);
-    
-    //switch (result)
-    //{
-    //    case 0:
-    //        OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
-    //        break;
-    //    case 1:
-    //        OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
-    //        break;
-    //    case 2:
-    //        OutputTexture[DTid.xy] += float4(0, 0, 1, 1);
-    //        break;
-    //    case 3:
-    //        OutputTexture[DTid.xy] += float4(0, 1, 0, 1);
-    //        break;
-    //    case 4:
-    //        OutputTexture[DTid.xy] += float4(0, 1, 1, 1);
-    //        break;
-    //    case 5:
-    //        OutputTexture[DTid.xy] += float4(1, 0, 0, 1);
-    //        break;
-    //    case 6:
-    //        OutputTexture[DTid.xy] += float4(1, 0, 1, 1);
-    //        break;
-    //    case 7:
-    //        OutputTexture[DTid.xy] += float4(1, 1, 0, 1);
-    //        break;
-    //    case 8:
-    //        OutputTexture[DTid.xy] += float4(1, 1, 1, 1);
-    //        break;
-    //}
-    
-    if (result == 101)
+    HitResult result = ray_octree_traversal(myRay);
+
+    if (result.hitDistance != FLOAT_MAX)
     {
-        OutputTexture[DTid.xy] += float4(1, 0, 0, 1);
-        return;
+        float3 color = result.item.color;
+        OutputTexture[DTid.xy] += float4(color, 1);
     }
-    
-    if (result == 102)
+    else
     {
-        OutputTexture[DTid.xy] += float4(0, 1, 0, 1);
-        return;
+        OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
     }
-    
-    float brightness = result / 100.f;
-    
-    OutputTexture[DTid.xy] += float4(brightness, brightness, brightness, 1);
-    
-    //switch (result)
-    //{
-    //    case 0:
-    //        OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
-    //        break;
-    //    case 1:
-    //        OutputTexture[DTid.xy] += float4(1, 0, 0, 1);
-    //        break;
-    //    case 2:
-    //        OutputTexture[DTid.xy] += float4(1, 1, 1, 1);
-    //        break;
-    //}
 }
 
 RayStruct createRay(float2 windowPos)
@@ -254,19 +192,6 @@ float3 reflectionRay(float3 aDirectionIn, float3 aNormal)
     float3 reflectionRayDir = aDirectionIn - (aNormal * 2 * dot(aDirectionIn, aNormal));
     return normalize(reflectionRayDir);
 }
-
-float2 intersectAABB(RayStruct aRay, float3 boxMin, float3 boxMax)
-{
-    float3 tMin = (boxMin - aRay.origin) / aRay.direction;
-    float3 tMax = (boxMax - aRay.origin) / aRay.direction;
-    float3 t1 = min(tMin, tMax);
-    float3 t2 = max(tMin, tMax);
-    float tNear = max(max(t1.x, t1.y), t1.z);
-    float tFar = min(min(t2.x, t2.y), t2.z);
-    return float2(tNear, tFar);
-};
-
-//unsigned int a; // first 8 bits used
 
 int first_node(float tx0, float ty0, float tz0, float txm, float tym, float tzm)
 {
@@ -345,9 +270,7 @@ struct TraversalItem
     float tx1;
     float ty1;
     float tz1;
-    
-    int scale;
-    
+
     float txm, tym, tzm;
     int currNode;
     
@@ -363,7 +286,14 @@ OctreeNode getNodeAtIndexAndOffset(int aIndex, int aOffset)
     return nodes.nodes[aOffset];
 }
 
-TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1, float ty1, float tz1, int aScale, OctreeNode aNode)
+OctreeItem getItemAtIndexAndOffset(int aIndex, int aOffset)
+{
+    OctreeItems items = flatOctreeItems[aIndex];
+    
+    return items.items[aOffset];
+}
+
+TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1, float ty1, float tz1, OctreeNode aNode)
 {
     TraversalItem myReturnItem;
     myReturnItem.node = aNode;
@@ -373,9 +303,7 @@ TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1
     myReturnItem.tx1 = tx1;
     myReturnItem.ty1 = ty1;
     myReturnItem.tz1 = tz1;
-    
-    myReturnItem.scale = aScale;
-    
+
     myReturnItem.txm = 0.f;
     myReturnItem.tym = 0.f;
     myReturnItem.tzm = 0.f;
@@ -387,17 +315,15 @@ TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1
     return myReturnItem;
 }
 
-int proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, float tz1, unsigned int a)
+HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, float tz1, unsigned int a)
 {
     int loopCount;
     
     //setup stack
-    TraversalItem traversalStack[10];
+    TraversalItem traversalStack[MAX_STACK_SIZE];
     int stackPointer = 1;
     
-    int octreeScale = 1 << (octreeLayerCount - 1);
-
-    TraversalItem myInitialItem = initializeTraversalItem(tx0, ty0, tz0, tx1, ty1, tz1, octreeScale, getNodeAtIndexAndOffset(0, 0)); // top level node is at 0,0
+    TraversalItem myInitialItem = initializeTraversalItem(tx0, ty0, tz0, tx1, ty1, tz1, getNodeAtIndexAndOffset(0, 0)); // top level node is at 0,0
     traversalStack[0] = myInitialItem;
     
     // stack loop
@@ -418,10 +344,18 @@ int proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, float tz
                 continue;
             }
 
-            if (currentItem.scale == 1)
+            if (stackPointer == octreeLayerCount)
             {
+                HitResult hit = hitResultDefault();
+                hit.hitDistance = 10;
+                
+                OctreeItem myReturnItem;
+                myReturnItem.color = float3(1, 1, 1);
+                
+                hit.item = myReturnItem;
+                
                 //reached leaf node
-                return 100;
+                return hit;
             }
         
             currentItem.txm = 0.5 * (currentItem.tx0 + currentItem.tx1);
@@ -433,181 +367,176 @@ int proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, float tz
             currentItem.inLoop = true;
         }
         
-        int index = currentItem.currNode ^ a;
-        
-        if (currentNode.childrenIndex >= octreeSize)
+        int index = currentItem.currNode ^ a;     
+        switch (currentItem.currNode)
         {
-            return 101;
-        }
-        
-       switch (currentItem.currNode)
-       {
-           case 0:
-           { 
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 0:
+            { 
+                if (currentNode.children & (1 << index))
+                {
+                    ////if child exists     
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.ty0, currentItem.tz0, currentItem.txm, currentItem.tym, currentItem.tzm, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.ty0, currentItem.tz0, currentItem.txm, currentItem.tym, currentItem.tzm, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
            
-                   currentItem.currNode = new_node(currentItem.txm, 4, currentItem.tym, 2, currentItem.tzm, 1);
+                currentItem.currNode = new_node(currentItem.txm, 4, currentItem.tym, 2, currentItem.tzm, 1);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
-           
-           case 1:
-           {
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
-           
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.ty0, currentItem.tzm, currentItem.txm, currentItem.tym, currentItem.tz1, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
-           
-                   currentItem.currNode = new_node(currentItem.txm, 5, currentItem.tym, 3, currentItem.tz1, 8);
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
+            
+            case 1:
+            {
+                if (currentNode.children & (1 << index))
+                {
+                    ////if child exists
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+                
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.ty0, currentItem.tzm, currentItem.txm, currentItem.tym, currentItem.tz1, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
+                
+                currentItem.currNode = new_node(currentItem.txm, 5, currentItem.tym, 3, currentItem.tz1, 8);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
            
-           case 2:
-           {
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 2:
+            {
+                if (currentNode.children & (1 << index))
+                {
+                    //if child exists
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.tym, currentItem.tz0, currentItem.txm, currentItem.ty1, currentItem.tzm, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.tym, currentItem.tz0, currentItem.txm, currentItem.ty1, currentItem.tzm, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
            
-                   currentItem.currNode = new_node(currentItem.txm, 6, currentItem.ty1, 8, currentItem.tzm, 3);
+                currentItem.currNode = new_node(currentItem.txm, 6, currentItem.ty1, 8, currentItem.tzm, 3);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
            
-           case 3:
-           {
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 3:
+            {
+                if (currentNode.children & (1 << index))
+                {
+                    //if child exists
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.tym, currentItem.tzm, currentItem.txm, currentItem.ty1, currentItem.tz1, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.tym, currentItem.tzm, currentItem.txm, currentItem.ty1, currentItem.tz1, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
            
-                   currentItem.currNode = new_node(currentItem.txm, 7, currentItem.ty1, 8, currentItem.tz1, 8);
+                currentItem.currNode = new_node(currentItem.txm, 7, currentItem.ty1, 8, currentItem.tz1, 8);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
            
-           case 4:
-           { 
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 4:
+            { 
+                if (currentNode.children & (1 << index))
+                {
+                    //if child exists
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.ty0, currentItem.tz0, currentItem.tx1, currentItem.tym, currentItem.tzm, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.ty0, currentItem.tz0, currentItem.tx1, currentItem.tym, currentItem.tzm, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
 
-                   currentItem.currNode = new_node(currentItem.tx1, 8, currentItem.tym, 6, currentItem.tzm, 5);
+                currentItem.currNode = new_node(currentItem.tx1, 8, currentItem.tym, 6, currentItem.tzm, 5);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
            
-           case 5:
-           { 
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists            
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 5:
+            { 
+                if (currentNode.children & (1 << index))
+                {
+                    //if child exists            
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.ty0, currentItem.tzm, currentItem.tx1, currentItem.tym, currentItem.tz1, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.ty0, currentItem.tzm, currentItem.tx1, currentItem.tym, currentItem.tz1, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
            
-                   currentItem.currNode = new_node(currentItem.tx1, 8, currentItem.tym, 7, currentItem.tz1, 8);
+                currentItem.currNode = new_node(currentItem.tx1, 8, currentItem.tym, 7, currentItem.tz1, 8);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
            
-           case 6:
-           { 
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 6:
+            { 
+                if (currentNode.children & (1 << index))
+                {
+                    //if child exists
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.tym, currentItem.tz0, currentItem.tx1, currentItem.ty1, currentItem.tzm, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.tym, currentItem.tz0, currentItem.tx1, currentItem.ty1, currentItem.tzm, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
            
-                   currentItem.currNode = new_node(currentItem.tx1, 8, currentItem.ty1, 8, currentItem.tzm, 7);
+                currentItem.currNode = new_node(currentItem.tx1, 8, currentItem.ty1, 8, currentItem.tzm, 7);
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
            
-           case 7:
-           { 
-                   if (currentNode.children & (1 << index))
-                   {
-                   //if child exists
-                       OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
+            case 7:
+            { 
+                if (currentNode.children & (1 << index))
+                {                   
+                    //if child exists
+                    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
            
-                   // traverse inside new node
-                       TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.tym, currentItem.tzm, currentItem.tx1, currentItem.ty1, currentItem.tz1, currentItem.scale / 2, myNode);
-                       traversalStack[stackPointer++] = myItem;
-                   }
+                    // traverse inside new node
+                    TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.tym, currentItem.tzm, currentItem.tx1, currentItem.ty1, currentItem.tz1, myNode);
+                    traversalStack[stackPointer++] = myItem;
+                }
            
-                   currentItem.currNode = 8;
+                currentItem.currNode = 8;
                    
-               // update the current item
-                   traversalStack[itemIndex] = currentItem;
-                   break;
-               }
-           case 8:
-           {
-                   stackPointer--;
+                // update the current item
+                traversalStack[itemIndex] = currentItem;
+                break;
+            }
+            
+            case 8:
+            {
+                stackPointer--;
            
-                   break;
-               }
+                break;
+            }
         }
         //go to next item in loop
         continue;
     }
     
-    return loopCount;
+    return hitResultDefault();
 }
 
-int ray_octree_traversal(RayStruct aRay)
+HitResult ray_octree_traversal(RayStruct aRay)
 {
     int octreeSize = 1 << (octreeLayerCount - 1);
     int3 octreePosition = int3(0, 0, 0);
@@ -652,9 +581,10 @@ int ray_octree_traversal(RayStruct aRay)
     
     if (max(max(tx0, ty0), tz0) < min(min(tx1, ty1), tz1) && min(min(tx1, ty1), tz1) > 0)
     {
-        return ((int) proc_subtree(tx0, ty0, tz0, tx1, ty1, tz1, a)) + 1;
+        return proc_subtree(tx0, ty0, tz0, tx1, ty1, tz1, a);
     }
-    return 0;
+    
+    return hitResultDefault();
 }
 
 int xorShift32(int aSeed)
