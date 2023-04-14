@@ -194,6 +194,12 @@ void main( uint3 DTid : SV_DispatchThreadID )
         return;
     }
     
+    if (result == 102)
+    {
+        OutputTexture[DTid.xy] += float4(0, 1, 0, 1);
+        return;
+    }
+    
     float brightness = result / 100.f;
     
     OutputTexture[DTid.xy] += float4(brightness, brightness, brightness, 1);
@@ -436,7 +442,7 @@ int proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, float tz
         
         if (currentNode.childrenIndex >= octreeSize)
         {
-            return 100;
+            return 101;
         }
         
        switch (currentItem.currNode)

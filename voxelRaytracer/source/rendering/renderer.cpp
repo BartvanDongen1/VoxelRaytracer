@@ -35,15 +35,15 @@ void Renderer::init()
 
 	scene = new VoxelModel(16, 16, 16);
 	//initRandomVoxels(scene, 5);
-	initFilled(scene);
-	//scene->data[0] = 1;
-	//scene->data[15] = 1;
-	//scene->data[240] = 1;
-	//scene->data[255] = 1;
-	//scene->data[3840] = 1;
-	//scene->data[3855] = 1;
-	//scene->data[4080] = 1;
-	//scene->data[4095] = 1;
+	//initFilled(scene);
+	scene->data[0] = 1;
+	scene->data[15] = 1;
+	scene->data[240] = 1;
+	scene->data[255] = 1;
+	scene->data[3840] = 1;
+	scene->data[3855] = 1;
+	scene->data[4080] = 1;
+	scene->data[4095] = 1;
 
 
 	//VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
