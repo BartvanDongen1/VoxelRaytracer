@@ -557,10 +557,11 @@ void Graphics::loadComputeStage()
 
         D3D12_SHADER_RESOURCE_VIEW_DESC myOctreeDataDesc = {};
         myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        myOctreeDataDesc.Format = DXGI_FORMAT_R32_SINT;
+        myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
         myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         // 586 is the size of my current octree
         myOctreeDataDesc.Buffer.NumElements = 586;
+        myOctreeDataDesc.Buffer.StructureByteStride = sizeof(OctreeElement[8]);
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
         device->CreateShaderResourceView(octreeBuffer.Get(), &myOctreeDataDesc, srvHandle);
