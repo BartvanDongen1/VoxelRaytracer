@@ -109,7 +109,7 @@ void Octree::insertPoint(int aX, int aY, int aZ, uint8_t aColor)
 
 		myChildLayersOffset = layerOffset << 3;
 
-		myData |= layer2offset + myChildLayersOffset << myChildOffsetOffset;
+		myData |= layer2offset + (myChildLayersOffset << myChildOffsetOffset);
 		
 		myData |= layer0offset << myParentOffsetOffset;
 		
@@ -133,7 +133,7 @@ void Octree::insertPoint(int aX, int aY, int aZ, uint8_t aColor)
 		myChildLayersOffset <<= 3;
 		myChildLayersOffset += layerOffset << 3;
 
-		myData |= layer3offset + myChildLayersOffset << myChildOffsetOffset;
+		myData |= layer3offset + (myChildLayersOffset << myChildOffsetOffset);
 
 		myData |= myLayer1Offset << myParentOffsetOffset;
 
@@ -157,7 +157,7 @@ void Octree::insertPoint(int aX, int aY, int aZ, uint8_t aColor)
 		myChildLayersOffset <<= 3;
 		myChildLayersOffset += layerOffset << 3;
 
-		myData |= layer4offset + myChildLayersOffset << myChildOffsetOffset;
+		myData |= layer4offset + (myChildLayersOffset << myChildOffsetOffset);
 
 		myData |= myLayer2Offset << myParentOffsetOffset;
 
@@ -286,7 +286,7 @@ void Octree2::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
 		if (myCurrentNode->childrenIndex == 0)
 		{
 			//set new children index
-			myCurrentNode->childrenIndex = flatTree.size();
+			myCurrentNode->childrenIndex = static_cast<uint32_t>(flatTree.size());
 
 			// create new nodes
 			flatTree.push_back({});

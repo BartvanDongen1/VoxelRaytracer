@@ -36,27 +36,27 @@ void Renderer::init()
 	scene = new VoxelModel(16, 16, 16);
 	//initRandomVoxels(scene, 5);
 	//initFilled(scene);
-	scene->data[0] = 1;
+	/*scene->data[0] = 1;
 	scene->data[15] = 1;
 	scene->data[240] = 1;
 	scene->data[255] = 1;
 	scene->data[3840] = 1;
 	scene->data[3855] = 1;
 	scene->data[4080] = 1;
-	scene->data[4095] = 1;
+	scene->data[4095] = 1;*/
 
 
-	//VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
+	VoxelModel* myTeapot = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
 	//VoxelModel* myMonkey = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
 	//scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 16);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
 
-	octree->init(scene);
+	octree->init(myTeapot);
 
 	octree2 = new Octree2();
-	octree2->init(scene);
+	octree2->init(myTeapot);
 
 	//Octree2* myOctree = new Octree2();
 	//myOctree->init(scene);

@@ -402,12 +402,7 @@ int proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, float tz
     
     // stack loop
     while (stackPointer > 0)
-    {
-        if (stackPointer > 2)
-        {
-            return 100;
-        }
-        
+    {        
         loopCount++;
         
         int itemIndex = stackPointer - 1;
