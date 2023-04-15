@@ -181,13 +181,13 @@ void Graphics::copyAccumulationBufferToBackbuffer()
 {
     // transition resources to get coppied
     TransitionResource(commandList.Get(), renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-    TransitionResource(commandList.Get(), accumulationOutputTexture[0].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    TransitionResource(commandList.Get(), accumulationOutputTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-    commandList.Get()->CopyResource(renderTargets[frameIndex].Get(), accumulationOutputTexture[0].Get());
+    commandList.Get()->CopyResource(renderTargets[frameIndex].Get(), accumulationOutputTexture.Get());
 
     // transition resources back to original state
     TransitionResource(commandList.Get(), renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    TransitionResource(commandList.Get(), accumulationOutputTexture[0].Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    TransitionResource(commandList.Get(), accumulationOutputTexture.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
 int wangHash(int aSeed)
@@ -482,27 +482,15 @@ void Graphics::loadComputeStage()
                 &myTextureDesc,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 nullptr,
-                IID_PPV_ARGS(raytraceOutputTexture[0].ReleaseAndGetAddressOf())));
-        raytraceOutputTexture[0]->SetName(L"compute Texture 0");
+                IID_PPV_ARGS(raytraceOutputTexture.ReleaseAndGetAddressOf())));
+        raytraceOutputTexture->SetName(L"compute Texture");
 
-        //ThrowIfFailed(
-        //    device->CreateCommittedResource(
-        //        &myDefaultHeapProperties,
-        //        D3D12_HEAP_FLAG_NONE,
-        //        &myTextureDesc,
-        //        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        //        nullptr,
-        //        IID_PPV_ARGS(raytraceOutputTexture[1].ReleaseAndGetAddressOf())));
-        //raytraceOutputTexture[1]->SetName(L"compute Texture 1");
-
-        threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT;
-        threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT;
+        threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT_X;
+        threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT_Y;
 
         // create uav
         CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
-        //CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
-        device->CreateUnorderedAccessView(raytraceOutputTexture[0].Get(), nullptr, nullptr, uavHandle1);
-        //device->CreateUnorderedAccessView(raytraceOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
+        device->CreateUnorderedAccessView(raytraceOutputTexture.Get(), nullptr, nullptr, uavHandle1);
     }
    
     //create noise texture for random values in the shader
@@ -581,11 +569,12 @@ void Graphics::loadComputeStage()
     UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
-    D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "10", NULL, NULL};
+    D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "7", NULL, NULL};
 
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeTest.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeRework.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeRework.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeReworkOptimized.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
@@ -677,8 +666,8 @@ void Graphics::loadAccumulationStage()
                 &myTextureDesc,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 nullptr,
-                IID_PPV_ARGS(accumulationOutputTexture[0].ReleaseAndGetAddressOf())));
-        accumulationOutputTexture[0]->SetName(L"accumulation Texture 0");
+                IID_PPV_ARGS(accumulationOutputTexture.ReleaseAndGetAddressOf())));
+        accumulationOutputTexture->SetName(L"accumulation Texture 0");
 
         /*ThrowIfFailed(
             device->CreateCommittedResource(
@@ -690,13 +679,13 @@ void Graphics::loadAccumulationStage()
                 IID_PPV_ARGS(accumulationOutputTexture[1].ReleaseAndGetAddressOf())));
         accumulationOutputTexture[1]->SetName(L"accumulation Texture 1");*/
 
-        threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT;
-        threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT;
+        threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT_X;
+        threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT_Y;
 
         // create uav
         CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
         //CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
-        device->CreateUnorderedAccessView(accumulationOutputTexture[0].Get(), nullptr, nullptr, uavHandle1);
+        device->CreateUnorderedAccessView(accumulationOutputTexture.Get(), nullptr, nullptr, uavHandle1);
         //device->CreateUnorderedAccessView(accumulationOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
     }
 

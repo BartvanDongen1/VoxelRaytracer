@@ -16,7 +16,8 @@
 struct ImGuiIO;
 
 #define FRAME_COUNT 2
-#define SHADER_THREAD_COUNT 8
+#define SHADER_THREAD_COUNT_X 8
+#define SHADER_THREAD_COUNT_Y 4
 
 struct ConstantBuffer
 {
@@ -125,8 +126,8 @@ private:
 	ImGuiIO* io;
 
 	//compute shader stuff
-	Microsoft::WRL::ComPtr<ID3D12Resource>      raytraceOutputTexture[2];
-	Microsoft::WRL::ComPtr<ID3D12Resource>      accumulationOutputTexture[2];
+	Microsoft::WRL::ComPtr<ID3D12Resource>      raytraceOutputTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource>      accumulationOutputTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      noiseTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      octreeBuffer;
 
@@ -146,8 +147,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3DBlob> accumulationShader;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> accumulationRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> accumulationPipelineState;
-
-	
 
 	// constant buffer for compute shader
 	ConstantBuffer* computeConstantBuffer;

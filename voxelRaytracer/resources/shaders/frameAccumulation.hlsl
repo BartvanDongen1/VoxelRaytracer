@@ -7,7 +7,7 @@ cbuffer constantBuffer : register(b0)
     bool shouldAcummulate;
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(8, 4, 1)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
     OutputTexture[DTid.xy] = inputTexture[DTid.xy] / framesAccumulated;

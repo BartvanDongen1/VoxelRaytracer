@@ -50,8 +50,7 @@ cbuffer constantBuffer : register(b0)
     
     int octreeSize;
 }
-
-//#define MAX_STACK_SIZE 0 
+ 
 #define FLOAT_MAX 3.402823466e+38F
 #define eps 1./ 1080.f
 #define OCTREE_DEPTH_LEVELS 5
@@ -89,12 +88,21 @@ struct VoxelTraverseResult
     float3 normal;
 };
 
+OctreeItem itemDefault()
+{
+    OctreeItem result;
+    result.color = float3(0, 0, 0);
+    
+    return result;
+}
+
 HitResult hitResultDefault()
 {
     HitResult result;
     result.hitDistance = FLOAT_MAX;
     result.loopCount = 0;
     result.hitNormal = float3(0, 0, 0);
+    result.item = itemDefault();
     return result;
 }
 
@@ -135,11 +143,6 @@ void main( uint3 DTid : SV_DispatchThreadID )
 {
     float2 WindowLocal = ((float2) DTid.xy / maxThreadIter.xy);  
     RandomState rs = initialize(DTid.xy, frameSeed);
-    
-    float4 outColor = float4(0, 0, 0, 1);
-    
-    HitResult hitResults[MAX_BOUNCES];
-    int stackPointer = 0;
     
     RayStruct myRay = createRayAA(WindowLocal, maxThreadIter.xy, rs);
     
@@ -245,21 +248,45 @@ int first_node(float tx0, float ty0, float tz0, float txm, float tym, float tzm)
 
 int new_node(float txm, int x, float tym, int y, float tzm, int z)
 {
-    if (txm < tym)
-    {
-        if (txm < tzm)
-        {
-            return x;
-        } // YZ plane
-    }
-    else
-    {
-        if (tym < tzm)
-        {
-            return y;
-        } // XZ plane
-    }
-    return z; // XY plane;
+// optimization 2
+    //int outputs[8];
+    //outputs[0] = z; // txm > tym, tym > tzm, tzm > txm, use z for edge case
+    //outputs[1] = x; // txm < tym, tym > tzm, tzm > txm, x smallest
+    //outputs[2] = y; // txm > tym, tym < tzm, tzm > txm, y smallest
+    //outputs[3] = x; // txm < tym, tym < tzm, tzm > txm, x smallest
+    //outputs[4] = z; // txm > tym, tym > tzm, tzm < txm, z smallest
+    //outputs[5] = z; // txm < tym, tym > tzm, tzm < txm, z smallest
+    //outputs[6] = y; // txm > tym, tym < tzm, tzm < txm, y smallest
+    //outputs[7] = z; // txm < tym, tym < tzm, tzm < txm, use z for edge case
+    
+    //int index = (int) (txm < tym) + ((int) (tym < tzm) << 1) + ((int) (tzm < txm) << 2);
+    
+    //return outputs[index];
+    
+// optimization 1
+    int output = 0;
+    output += (int) (txm < tym) * (int) (txm < tzm) * x;
+    output += (int) (!(txm < tym)) * (int) (tym < tzm) * y;
+    output += (int) (!(txm < tym)) * (int) (!(tym < tzm)) * z;
+    output += (int) (txm < tym) * (int) (!(txm < tzm)) * z;
+    return output;
+    
+// unoptimized
+    //if (txm < tym)
+    //{
+    //    if (txm < tzm)
+    //    {
+    //        return x;
+    //    } // YZ plane
+    //}
+    //else
+    //{
+    //    if (tym < tzm)
+    //    {
+    //        return y;
+    //    } // XZ plane
+    //}
+    //return z; // XY plane;
 }
 
 struct TraversalItem
@@ -267,11 +294,15 @@ struct TraversalItem
     float tx0;
     float ty0;
     float tz0;
+    
     float tx1;
     float ty1;
     float tz1;
 
-    float txm, tym, tzm;
+    float txm;
+    float tym;
+    float tzm;
+
     int currNode;
     
     bool inLoop;
@@ -297,9 +328,11 @@ TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1
 {
     TraversalItem myReturnItem;
     myReturnItem.node = aNode;
+    
     myReturnItem.tx0 = tx0;
     myReturnItem.ty0 = ty0;
     myReturnItem.tz0 = tz0;
+    
     myReturnItem.tx1 = tx1;
     myReturnItem.ty1 = ty1;
     myReturnItem.tz1 = tz1;
@@ -330,6 +363,15 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
     while (stackPointer > 0)
     {        
         loopCount++;
+        
+        //if (loopCount > 200)
+        //{
+        //    HitResult hit = hitResultDefault();
+        //    hit.loopCount = loopCount;
+        //    hit.item.color = float3(1, 0, 0);
+            
+        //    return hit;
+        //}
         
         int itemIndex = stackPointer - 1;
         TraversalItem currentItem = traversalStack[itemIndex];
@@ -367,7 +409,25 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
             currentItem.inLoop = true;
         }
         
-        int index = currentItem.currNode ^ a;     
+        int index = currentItem.currNode ^ a; 
+        
+// switchless
+        //if (currentNode.children & (1 << index))
+        //{
+        //    //if child exists     
+        //    OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);                                                                                  // same
+           
+        //    // traverse inside new node
+        //    TraversalItem myItem = initializeTraversalItem(currentItem.tx0, currentItem.ty0, currentItem.tz0, currentItem.txm, currentItem.tym, currentItem.tzm, myNode);   // different
+        //    traversalStack[stackPointer++] = myItem;                                                                                                                        // same
+        //}
+        
+        //currentItem.currNode = new_node(currentItem.txm, 4, currentItem.tym, 2, currentItem.tzm, 1);                                                                        // different
+                                                                
+        //// update the current item
+        //traversalStack[itemIndex] = currentItem;                                                                                                                            // same
+        
+// switch
         switch (currentItem.currNode)
         {
             case 0:
@@ -471,7 +531,7 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
                 {
                     //if child exists            
                     OctreeNode myNode = getNodeAtIndexAndOffset(currentNode.childrenIndex, index);
-           
+
                     // traverse inside new node
                     TraversalItem myItem = initializeTraversalItem(currentItem.txm, currentItem.ty0, currentItem.tzm, currentItem.tx1, currentItem.tym, currentItem.tz1, myNode);
                     traversalStack[stackPointer++] = myItem;
