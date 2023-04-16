@@ -566,7 +566,10 @@ void Graphics::loadComputeStage()
     }
 
     // Enable better shader debugging with the graphics debugging tools.
-    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    //UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    
+    // use for profiling
+    UINT compileFlags = NULL;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
     D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "7", NULL, NULL};

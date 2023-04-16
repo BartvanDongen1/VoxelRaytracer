@@ -351,13 +351,19 @@ struct TraversalItem
     float ty1;
     float tz1;
 
-    int inLoopAndcurrNode; // 5th bit = inloop bool, 1st 4 bits = currNode
+    int inLoopAndcurrNode; // 10th - 6th bits = scale, 5th bit = inloop bool, 1st 4 bits = currNode
  
     int nodeValues; // highest 8 bits are child flags, lower 24 bits are child index
 };
 
 #define CHILD_INDEX(value) (value & 0x00FFFFFF) 
 #define CHILDREN_FLAGS(value) (value >> 24)
+
+#define GET_SIZE(value) ((value >> 5) & 0x1F)
+#define MASK_SIZE(value) (value & (0x1F << 5))
+#define SIZE_OFFSET(value) (value << 5)
+
+#define MASK_LOOP_BOOL(value) (value & (0x1 << 4))
 
 OctreeNode getNodeAtIndexAndOffset(int aIndex, int aOffset)
 {
@@ -373,7 +379,7 @@ OctreeItem getItemAtIndexAndOffset(int aIndex, int aOffset)
     return items.items[aOffset];
 }
 
-TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1, float ty1, float tz1, OctreeNode aNode)
+TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1, float ty1, float tz1, OctreeNode aNode, int size)
 {
     TraversalItem myReturnItem;
     
@@ -387,7 +393,7 @@ TraversalItem initializeTraversalItem(float tx0, float ty0, float tz0, float tx1
     myReturnItem.ty1 = ty1;
     myReturnItem.tz1 = tz1;
 
-    myReturnItem.inLoopAndcurrNode = 0;
+    myReturnItem.inLoopAndcurrNode = SIZE_OFFSET(size);
     
     return myReturnItem;
 }
@@ -400,7 +406,7 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
     TraversalItem traversalStack[MAX_STACK_SIZE];
     int stackPointer = 1;
     
-    TraversalItem myInitialItem = initializeTraversalItem(tx0, ty0, tz0, tx1, ty1, tz1, getNodeAtIndexAndOffset(0, 0)); // top level node is at 0,0
+    TraversalItem myInitialItem = initializeTraversalItem(tx0, ty0, tz0, tx1, ty1, tz1, getNodeAtIndexAndOffset(0, 0), octreeLayerCount); // top level node is at 0,0
     traversalStack[0] = myInitialItem;
     
     // stack loop
@@ -419,13 +425,13 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
         
         int itemIndex = stackPointer - 1;
         TraversalItem currentItem = traversalStack[itemIndex];
-
+        
         float myTxm = 0.5 * (currentItem.tx0 + currentItem.tx1);
         float myTym = 0.5 * (currentItem.ty0 + currentItem.ty1);
         float myTzm = 0.5 * (currentItem.tz0 + currentItem.tz1);
 
         // skip computation if it's already been done
-        if (!(bool) (currentItem.inLoopAndcurrNode & 0x10)) // mask bool with 0b10000 -> 0x10
+        if (!(bool) MASK_LOOP_BOOL(currentItem.inLoopAndcurrNode)) // mask bool with 0b10000 -> 0x10
         {
             if (currentItem.tx1 < 0 || currentItem.ty1 < 0 || currentItem.tz1 < 0)
             {
@@ -433,7 +439,7 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
                 continue;
             }
 
-            if (stackPointer == octreeLayerCount)
+            if (GET_SIZE(currentItem.inLoopAndcurrNode) == 1)
             {
                 HitResult hit = hitResultDefault();
                 hit.hitDistance = 10;
@@ -447,15 +453,7 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
                 return hit;
             }
 
-            currentItem.inLoopAndcurrNode = first_node(currentItem.tx0, currentItem.ty0, currentItem.tz0, myTxm, myTym, myTzm);
-            
-            currentItem.inLoopAndcurrNode |= 0x10; // flag bool with 0b10000 -> 0x10
-        }
-        
-        if ((currentItem.inLoopAndcurrNode & 0xF) == 8)
-        {
-            stackPointer--;
-            continue;
+            currentItem.inLoopAndcurrNode = first_node(currentItem.tx0, currentItem.ty0, currentItem.tz0, myTxm, myTym, myTzm) | 0x10 | MASK_SIZE(currentItem.inLoopAndcurrNode);
         }
 
         int index = (currentItem.inLoopAndcurrNode & 0xF) ^ a;
@@ -468,6 +466,19 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
         float myty1 = myTym * (int) (!flag2) + currentItem.ty1 * (int) flag2;
         float mytz1 = myTzm * (int) (!flag1) + currentItem.tz1 * (int) flag1;
         
+        int myX = ((currentItem.inLoopAndcurrNode & 0xF) + 4) * (int) (!flag3) + 8 * (int) flag3;
+        int myY = ((currentItem.inLoopAndcurrNode & 0xF) + 2) * (int) (!flag2) + 8 * (int) flag2;
+        int myZ = ((currentItem.inLoopAndcurrNode & 0xF) + 1) * (int) (!flag1) + 8 * (int) flag1;
+        
+        int newNodeIndex = new_node(mytx1, myX, myty1, myY, mytz1, myZ);
+        currentItem.inLoopAndcurrNode = newNodeIndex | MASK_LOOP_BOOL(currentItem.inLoopAndcurrNode) | MASK_SIZE(currentItem.inLoopAndcurrNode); // make sure to keep the hidden bool when assigning values
+
+        // we can preemptively throw away the current node to prevent extra computation if currnode == 8
+        stackPointer = stackPointer - (int) (newNodeIndex == 8);
+
+        // update the current item
+        traversalStack[itemIndex] = currentItem;
+        
         if (CHILDREN_FLAGS(currentItem.nodeValues) & (1 << index))
         {
             //if child exists     
@@ -478,18 +489,9 @@ HitResult proc_subtree(float tx0, float ty0, float tz0, float tx1, float ty1, fl
             float mytz0 = currentItem.tz0 * (int) (!flag1) + myTzm * (int) flag1;
             
             // traverse inside new node
-            TraversalItem myItem = initializeTraversalItem(mytx0, myty0, mytz0, mytx1, myty1, mytz1, myNode);
+            TraversalItem myItem = initializeTraversalItem(mytx0, myty0, mytz0, mytx1, myty1, mytz1, myNode, GET_SIZE(currentItem.inLoopAndcurrNode) - 1);
             traversalStack[stackPointer++] = myItem;
         }
-        
-        int myX = ((currentItem.inLoopAndcurrNode & 0xF) + 4) * (int) (!flag3) + 8 * (int) flag3;
-        int myY = ((currentItem.inLoopAndcurrNode & 0xF) + 2) * (int) (!flag2) + 8 * (int) flag2;
-        int myZ = ((currentItem.inLoopAndcurrNode & 0xF) + 1) * (int) (!flag1) + 8 * (int) flag1;
-        
-        currentItem.inLoopAndcurrNode = new_node(mytx1, myX, myty1, myY, mytz1, myZ) | (currentItem.inLoopAndcurrNode & 0x10); // make sure to keep the hidden bool when assigning values
-        
-        // update the current item
-        traversalStack[itemIndex] = currentItem;
         
         //go to next item in loop
         continue;
