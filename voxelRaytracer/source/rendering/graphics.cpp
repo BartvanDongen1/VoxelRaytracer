@@ -11,12 +11,16 @@ using namespace Microsoft::WRL;
 Graphics::Graphics()
 {
     computeConstantBuffer = new ConstantBuffer();
+    
+    octreeConstantBuffer = new OctreeBuffer();
+    
     accumulationConstantBuffer = new AcummulationBuffer();
 }
 
 Graphics::~Graphics()
 {
     delete computeConstantBuffer;
+    delete octreeConstantBuffer;
     delete accumulationConstantBuffer;
 }
 
@@ -129,6 +133,9 @@ void Graphics::renderFrame()
     CD3DX12_GPU_DESCRIPTOR_HANDLE octreeBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
     commandList->SetComputeRootDescriptorTable(3, octreeBufferDescriptorHandle);
 
+    CD3DX12_GPU_DESCRIPTOR_HANDLE octreeConstBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
+    commandList->SetComputeRootDescriptorTable(4, octreeConstBufferDescriptorHandle);
+
     commandList->SetPipelineState(computePipelineState.Get());
     commandList->Dispatch(threadGroupX, threadGroupY, 1);
     
@@ -204,6 +211,8 @@ static int sFrameCount = 0;
 
 void Graphics::updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize)
 {
+    octreeConstantBuffer->octreeSize = aSize;
+
     computeConstantBuffer->frameSeed = wangHash(sFrameCount++);
 
     computeConstantBuffer->sampleCount = aFocussed == true ? 1 : 1;
@@ -218,9 +227,9 @@ void Graphics::updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize)
     computeConstantBuffer->octreeSize = aSize;
 }
 
-void Graphics::updateAccumulationVariables(bool aFocussed)
+void Graphics::updateAccumulationVariables(bool aShouldNotAccumulate)
 {
-    if (aFocussed)
+    if (aShouldNotAccumulate)
     {
         accumulationConstantBuffer->framesAccumulated = 1;
         accumulationConstantBuffer->shouldAcummulate = false;
@@ -296,11 +305,14 @@ void Graphics::updateOctreeVariables(const Octree& aOctree)
     octreeBuffer->Unmap(0, &readRange);
 
     // set const buffer varaible for ready the octree properly later
-    computeConstantBuffer->octreeLayerCount = aOctree.getLayerCount();
+    //computeConstantBuffer->octreeLayerCount = aOctree.getLayerCount();
+    octreeConstantBuffer->octreeLayerCount = aOctree.getLayerCount();
 }
 
 void Graphics::updateConstantBuffer()
 {
+    memcpy(pOctreeCbvDataBegin, octreeConstantBuffer, sizeof(OctreeBuffer));
+
     computeConstantBuffer->maxThreadIter = glm::vec4(Window::getWidth(), Window::getHeight(), 0, 0);
     memcpy(pComputeCbvDataBegin, computeConstantBuffer, sizeof(ConstantBuffer));
 
@@ -566,10 +578,10 @@ void Graphics::loadComputeStage()
     }
 
     // Enable better shader debugging with the graphics debugging tools.
-    //UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     
     // use for profiling
-    UINT compileFlags = NULL;
+    //UINT compileFlags = NULL;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
     D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "7", NULL, NULL};
@@ -577,21 +589,24 @@ void Graphics::loadComputeStage()
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeTest.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeRework.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeReworkOptimized.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeReworkOptimized.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/test.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
-    CD3DX12_DESCRIPTOR_RANGE1 myRanges[4];
+    CD3DX12_DESCRIPTOR_RANGE1 myRanges[5];
     myRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
     myRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+    myRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
 
-    CD3DX12_ROOT_PARAMETER1 myRootParameters[4];
+    CD3DX12_ROOT_PARAMETER1 myRootParameters[5];
     myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL);
     myRootParameters[3].InitAsDescriptorTable(1, &myRanges[3], D3D12_SHADER_VISIBILITY_ALL);
+    myRootParameters[4].InitAsDescriptorTable(1, &myRanges[4], D3D12_SHADER_VISIBILITY_ALL);
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
@@ -653,6 +668,34 @@ void Graphics::loadComputeStage()
         CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 0, cbvSrvUavDescriptorSize);
         device->CreateConstantBufferView(&myBufferDesc, cbvHandle);
     }
+
+    //const buffer octree
+    {
+        auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(OctreeBuffer));
+
+        ThrowIfFailed(device->CreateCommittedResource(
+            &heapUpload,
+            D3D12_HEAP_FLAG_NONE,
+            &resourceDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&octreeConstantBufferResource)));
+
+        // Map and initialize the constant buffer. We don't unmap this until the
+        // app closes. Keeping things mapped for the lifetime of the resource is okay.
+        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        ThrowIfFailed(octreeConstantBufferResource->Map(0, &readRange, reinterpret_cast<void**>(&pOctreeCbvDataBegin)));
+
+        // Describe and create a constant buffer view.
+        D3D12_CONSTANT_BUFFER_VIEW_DESC myBufferDesc{};
+
+        myBufferDesc.BufferLocation = octreeConstantBufferResource->GetGPUVirtualAddress();
+        myBufferDesc.SizeInBytes = static_cast<UINT>(sizeof(OctreeBuffer));
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
+        device->CreateConstantBufferView(&myBufferDesc, cbvHandle);
+    }
 }
 
 void Graphics::loadAccumulationStage()
@@ -672,24 +715,12 @@ void Graphics::loadAccumulationStage()
                 IID_PPV_ARGS(accumulationOutputTexture.ReleaseAndGetAddressOf())));
         accumulationOutputTexture->SetName(L"accumulation Texture 0");
 
-        /*ThrowIfFailed(
-            device->CreateCommittedResource(
-                &myDefaultHeapProperties,
-                D3D12_HEAP_FLAG_NONE,
-                &myTextureDesc,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                nullptr,
-                IID_PPV_ARGS(accumulationOutputTexture[1].ReleaseAndGetAddressOf())));
-        accumulationOutputTexture[1]->SetName(L"accumulation Texture 1");*/
-
         threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT_X;
         threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT_Y;
 
         // create uav
         CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
-        //CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle2(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
         device->CreateUnorderedAccessView(accumulationOutputTexture.Get(), nullptr, nullptr, uavHandle1);
-        //device->CreateUnorderedAccessView(accumulationOutputTexture[1].Get(), nullptr, nullptr, uavHandle2);
     }
 
     //create the constant buffer for frame accumulation shader

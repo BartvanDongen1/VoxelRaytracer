@@ -1,19 +1,39 @@
 #pragma once
 #include "graphics.h"
+#include "engine\benchmarkManager.h"
+#include "engine\profiler.h"
 
 #define FRAME_TIME_ARRAY_SIZE 1000
 #define PLOT_WRITES_PER_SECOND 5
 
 class ImguiWindowManager
 {
-
 public:
+	ImguiWindowManager();
+	~ImguiWindowManager();
+
 	void updateAndRender(const Graphics& aGraphics, float aDeltaTime);
+	void setController(Controller* aController);
 
 private:
-	void updateVariables(const Graphics& aGraphics, float aDeltaTime);
-	void clearProfilingVariables();
+	void update(const Graphics& aGraphics, float aDeltaTime);
 	void plotProfilingData();
+
+	void benchmarkEndCallback();
+
+	//benchmark
+	BenchmarkManager* benchmarkManager{ nullptr };
+	bool benchmarkToolOpen{ false };
+	bool benchmarkRecordingWindowOpen{ false };
+
+	int benchmarkRecordingNameSize{ 16 };
+	char benchmarkRecordingName[16]{ "" };
+
+	std::string selectedBenchmarkFileName{ "" };
+	int currentPartIdx{ 0 };
+
+	bool benchmarkNameHasError{ false };
+	std::string benchmarkNameErrorMessage;
 
 	//fps stuff
 	int framesThisSecond{ 0 };
@@ -26,16 +46,6 @@ private:
 
 	bool profilerOpen{ false };
 
-	//profiling
-	bool isProfiling{ false };
-	int accumulatedProflingFrames{ 0 };
-	float accumulatedProflingTime{ 1.f };
-
-	int currentTimestep{ 0 };
-	int timestepAccumulatedFrames{ 0 };
-	float timestepAccumulatedTime{ 1.f };
-
-	float averageFrameTimeArray[FRAME_TIME_ARRAY_SIZE]{ 0 };
-	float timeArray[FRAME_TIME_ARRAY_SIZE]{ 0 };
+	Profiler* profiler;
 };
 

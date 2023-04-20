@@ -86,6 +86,8 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="source\engine\profiler.cpp" />
+    <ClCompile Include="source\engine\benchmarkManager.cpp" />
     <ClCompile Include="source\rendering\imgui-docking\implot.cpp" />
     <ClCompile Include="source\rendering\imgui-docking\implot_demo.cpp" />
     <ClCompile Include="source\rendering\imgui-docking\implot_items.cpp" />
@@ -114,6 +116,7 @@
     <ClCompile Include="source\engine\texture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\engine\benchmarkManager.h" />
     <ClInclude Include="include\rendering\imgui-docking\implot.h" />
     <ClInclude Include="include\rendering\imgui-docking\implot_internal.h" />
     <ClInclude Include="include\rendering\imguiWindowManager.h" />
@@ -134,6 +137,7 @@
     <ClInclude Include="include\engine\logger.h" />
     <ClInclude Include="include\rendering\octree.h" />
     <ClInclude Include="include\engine\meshModel.h" />
+    <ClInclude Include="include\engine\profiler.h" />
     <ClInclude Include="source\rendering\helper.h" />
     <ClInclude Include="source\rendering\imgui-docking\imgui_impl_dx12.h" />
     <ClInclude Include="source\rendering\imgui-docking\imgui_impl_win32.h" />

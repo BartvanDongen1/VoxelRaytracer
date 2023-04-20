@@ -13,13 +13,16 @@ public:
 	glm::vec3 getPixelOffsetHorizontal();
 	glm::vec3 getPixelOffsetVertical();
 
-	glm::vec3 getDirection();
+	glm::vec3 getDirection() const;
 	void setDirection(glm::vec3 aDirection);
 
 	glm::vec3 position{ 0,0,0 };
+
 private:
 	void updateDirectionVariables();
 	
+	bool controlsEnabled;
+
 	glm::vec3 direction{ 0,0,0 };
 
 	glm::vec3 upperLeftCorner{ 0,0,0 };

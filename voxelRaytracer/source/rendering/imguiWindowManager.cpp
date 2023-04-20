@@ -1,13 +1,28 @@
 #include "rendering/imguiWindowManager.h"
 #include "rendering/imgui-docking/imgui.h"
 #include "rendering/imgui-docking/implot.h"
+#include "engine\logger.h"
 
 using namespace ImGui;
 using namespace ImPlot;
 
+ImguiWindowManager::ImguiWindowManager()
+{
+	benchmarkManager = new BenchmarkManager();
+	profiler = new Profiler();
+
+	benchmarkManager->setProfiler(profiler);
+}
+
+ImguiWindowManager::~ImguiWindowManager()
+{
+	delete benchmarkManager;
+	delete profiler;
+}
+
 void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDeltaTime)
 {
-	updateVariables(aGraphics, aDeltaTime);
+	update(aGraphics, aDeltaTime);
 
 	bool windowOpen = true;
 
@@ -19,6 +34,11 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 	if (Button("profiler"))
 	{
 		profilerOpen = true;
+	}
+
+	if (Button("benchmark tool"))
+	{
+		benchmarkToolOpen = true;
 	}
 
 	End();
@@ -36,27 +56,178 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 
 		if (Button("start profiling"))
 		{
-			clearProfilingVariables();
-			isProfiling = true;
+			profiler->startProfiling();
 		}
 
 		SameLine();
 
 		if (Button("stop profiling"))
 		{
-			isProfiling = false;
+			profiler->stopProfiling();
 		}
 
-		Text("average FPS: %.3f", accumulatedProflingFrames / accumulatedProflingTime);
-		Text("frame count: %i", accumulatedProflingFrames);
+		Text("average FPS: %.3f", profiler->accumulatedProflingFrames / profiler->accumulatedProflingTime);
+		Text("frame count: %i", profiler->accumulatedProflingFrames);
 
 		plotProfilingData();
 
 		End();
 	}
+
+	if (benchmarkToolOpen)
+	{
+		Begin("Benchmark tool", &profilerOpen, ImGuiWindowFlags_None);
+
+		if (Button("close"))
+		{
+			benchmarkToolOpen = false;
+
+			benchmarkManager->stopBenchmark();
+		}
+
+		SameLine();
+
+		if (Button("start benchmark"))
+		{
+			if (benchmarkManager->startBenchmark(selectedBenchmarkFileName))
+			{
+				profilerOpen = true;
+			}
+		}
+
+		SameLine();
+
+		if (Button("record banchmark"))
+		{
+			benchmarkRecordingWindowOpen = true;
+			benchmarkManager->startBenchmarkRecording();
+		}
+
+		{
+			// benchmark list
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2());
+			const auto childSize = ImVec2(310, 280);
+			ImGui::BeginChild("BenchmarkList", childSize, true, ImGuiWindowFlags_MenuBar);
+
+			if (ImGui::BeginMenuBar()) {
+				ImGui::TextUnformatted("saved benchmarks");
+				ImGui::EndMenuBar();
+			}
+
+			const auto  listSize = ImVec2(childSize[0], childSize[1] - 20);
+			
+			const auto items = benchmarkManager->getBenchmarkFileNames();
+
+
+			if (ImGui::BeginListBox("##benchmark_list", listSize)) {
+				if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_DownArrow))) {
+					if (currentPartIdx < items.size() - 1) { ++currentPartIdx; }
+				}
+				if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_UpArrow))) {
+					if (currentPartIdx > 0) { --currentPartIdx; }
+				}
+
+				int i = 0;
+				for (const auto& item : items)
+				{
+					const bool is_selected = (currentPartIdx == i);
+					if (ImGui::Selectable(item.c_str(), is_selected)) 
+					{ 
+						currentPartIdx = i;
+						selectedBenchmarkFileName = item.c_str();
+					}
+
+					// Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+					if (is_selected) { ImGui::SetItemDefaultFocus(); }
+
+					++i;
+				}
+
+				ImGui::EndListBox();
+			}
+
+			ImGui::EndChild();
+			ImGui::PopStyleVar();
+		}
+
+		if (Button("refresh list"))
+		{
+			benchmarkManager->updateBenchmarkFileNames();
+		}
+
+		End();
+	}
+
+	if (benchmarkRecordingWindowOpen)
+	{
+		if (Button("stop"))
+		{
+			benchmarkManager->stopBenchmarkRecording();
+		}
+
+		SameLine();
+
+		if (Button("cancel"))
+		{
+			benchmarkManager->stopBenchmarkRecording();
+			benchmarkManager->deleteRecordingData();
+			benchmarkRecordingWindowOpen = false;
+			benchmarkNameHasError = false;
+		}
+
+		SameLine();
+
+		if (Button("save"))
+		{
+			LOG_INFO("Atempting to save benchmark with name: %s", benchmarkRecordingName);
+
+			std::string myFileName = benchmarkRecordingName;
+			myFileName.append(".json");
+
+			//check if name is filled in
+			if (benchmarkRecordingName[0] == '\0')
+			{
+				benchmarkNameHasError = true;
+				benchmarkNameErrorMessage = "You must fill in a name for the benchmark";
+			}
+			//check if name isn't dupicate
+			else if (benchmarkManager->getBenchmarkFileNames().count(myFileName))
+			{
+				benchmarkNameHasError = true;
+				benchmarkNameErrorMessage = "A file already exists with that name";
+			}
+			else
+			{
+				//save file
+				benchmarkManager->saveBenchmark(myFileName);
+
+				//clear benchmark data
+				benchmarkManager->deleteRecordingData();
+				benchmarkRecordingWindowOpen = false;
+				benchmarkNameHasError = false;
+			}
+		}
+
+		PushItemWidth(140);
+		InputText("##text1", benchmarkRecordingName, benchmarkRecordingNameSize);
+
+		if (benchmarkNameHasError)
+		{
+			SameLine();
+			Text(benchmarkNameErrorMessage.c_str());
+		}
+
+		Text("recording duration: %.3f", benchmarkManager->getRecordingDuration());
+		Text("capture count: %i", benchmarkManager->getRecordingCaptureCount());
+	}
 }
 
-void ImguiWindowManager::updateVariables(const Graphics& aGraphics, float aDeltaTime)
+void ImguiWindowManager::setController(Controller* aController)
+{
+	benchmarkManager->setController(aController);
+}
+
+void ImguiWindowManager::update(const Graphics& aGraphics, float aDeltaTime)
 {
 	//fps counter
 	frameTimeAccumilator += aDeltaTime;
@@ -75,42 +246,10 @@ void ImguiWindowManager::updateVariables(const Graphics& aGraphics, float aDelta
 
 
 	//profiling varaibles
-	if (isProfiling)
-	{
-		accumulatedProflingFrames++;
-		accumulatedProflingTime += aDeltaTime;
+	profiler->update(aDeltaTime);
 
-		timestepAccumulatedFrames++;
-		timestepAccumulatedTime += aDeltaTime;
-
-		if (currentTimestep < FRAME_TIME_ARRAY_SIZE)
-		{
-			if (timestepAccumulatedTime > 1.f / PLOT_WRITES_PER_SECOND)
-			{
-				float myAverageDeltaTime = timestepAccumulatedTime / timestepAccumulatedFrames;
-				averageFrameTimeArray[currentTimestep++] = myAverageDeltaTime * 1000.f;
-
-				timestepAccumulatedTime -= 1.f / PLOT_WRITES_PER_SECOND;
-				timestepAccumulatedFrames = 0;
-			}
-		}
-	}
-}
-
-void ImguiWindowManager::clearProfilingVariables()
-{
-	accumulatedProflingFrames = 0;
-	accumulatedProflingTime = 0.f;
-
-	for (int i = 0; i < FRAME_TIME_ARRAY_SIZE; i++)
-	{
-		averageFrameTimeArray[i] = 0.f;
-		timeArray[i] = static_cast<float>(i) / PLOT_WRITES_PER_SECOND;
-	}
-
-	timestepAccumulatedFrames = 0;
-	timestepAccumulatedTime = 0.f;
-	currentTimestep = 0;
+	//update benchmark manager
+	benchmarkManager->update(aDeltaTime);
 }
 
 void ImguiWindowManager::plotProfilingData()
@@ -119,8 +258,13 @@ void ImguiWindowManager::plotProfilingData()
 	{
 		SetupAxes("Time (seconds)", "Frame Time (MS)");
 		SetupAxesLimits(0, 30, 0, 50);
-		PlotLine("Total Render Time", timeArray, averageFrameTimeArray, currentTimestep);
+		PlotLine("Total Render Time", profiler->timeArray, profiler->averageFrameTimeArray, profiler->currentTimestep);
 		SetNextMarkerStyle(ImPlotMarker_Circle);
 		EndPlot();
 	}
+}
+
+void ImguiWindowManager::benchmarkEndCallback()
+{
+	profiler->stopProfiling();
 }

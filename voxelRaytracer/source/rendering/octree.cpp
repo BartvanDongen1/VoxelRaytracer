@@ -114,6 +114,8 @@ void Octree::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
 
 const void* Octree::getData() const
 {
+	assert(flatTree.size() > 0); //can't use empty octree
+
 	return &flatTree[0];
 }
 

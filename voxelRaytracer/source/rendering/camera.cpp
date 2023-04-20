@@ -53,7 +53,7 @@ glm::vec3 Camera::getPixelOffsetVertical()
 	return pixelOffsetVertical;
 }
 
-glm::vec3 Camera::getDirection()
+glm::vec3 Camera::getDirection() const
 {
 	return direction;
 }

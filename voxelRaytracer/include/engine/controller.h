@@ -2,8 +2,11 @@
 #include <glm/glm.hpp>
 #include "rendering/camera.h"
 
+class BenchmarkManager;
+
 class Controller
 {
+	friend class BenchmarkManager;
 public:
 	Controller();
 	~Controller();
@@ -11,7 +14,7 @@ public:
 	void init();
 	void update(float aDeltaTime);
 
-	Camera* getCamera() { return camera; };
+	Camera* getCamera() const { return camera; };
 
 	float mouseSensitivityMultiplier{ 1 };
 
@@ -20,7 +23,13 @@ public:
 
 	float maxVelocity{ 4 };
 
+	void enableInputs();
+	void disableInputs();
+
+	bool getInputsEnabled() const;
 private:
+	bool inputsEnabled{ true };
+
 	Camera* camera;
 
 	glm::vec3 position{ 0, 0, 0 };

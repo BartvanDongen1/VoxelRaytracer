@@ -30,15 +30,17 @@ void Renderer::init()
 	
 	cameraController->init();
 	camera = cameraController->getCamera();
+	imguiWindow.setController(cameraController);
 
 	octree = new Octree();
 
 
 	//scene = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
-	//scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 32);
+	scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 64);
 
-	scene = new VoxelModel(64, 64, 64);
-	initRandomVoxels(scene, 20);
+	//scene = new VoxelModel(64, 64, 64);
+	
+	//initRandomVoxels(scene, 20);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
@@ -78,8 +80,8 @@ void Renderer::update(float aDeltaTime)
 		cameraController->update(aDeltaTime);
 	}
 
-	graphics->updateCameraVariables(*camera, windowFocused, octree->getSize());
-	graphics->updateAccumulationVariables(windowFocused);
+	graphics->updateCameraVariables(*camera, windowFocused, static_cast<int>(octree->getSize()));
+	graphics->updateAccumulationVariables(windowFocused || !cameraController->getInputsEnabled());
 
 	//rendering
 	graphics->beginFrame();

@@ -31,6 +31,8 @@ void Controller::init()
 
 void Controller::update(float aDeltaTime)
 {
+	if (!inputsEnabled) return;
+
 	// camera rotation
 	float x;
 	float y;
@@ -114,4 +116,19 @@ void Controller::update(float aDeltaTime)
 
 	camera->setDirection(mylookAtVector);
 	camera->position = position;
+}
+
+void Controller::enableInputs()
+{
+	inputsEnabled = true;
+}
+
+void Controller::disableInputs()
+{
+	inputsEnabled = false;
+}
+
+bool Controller::getInputsEnabled() const
+{
+	return inputsEnabled;
 }

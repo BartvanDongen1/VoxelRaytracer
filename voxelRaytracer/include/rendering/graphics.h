@@ -33,9 +33,9 @@ struct ConstantBuffer
 	int frameSeed;
 	int sampleCount;
 
-	int octreeLayerCount;
+	int octreeLayerCount; // not used
 
-	int octreeSize;
+	int octreeSize; // not used
 
 	float padding[36];
 };
@@ -53,6 +53,17 @@ struct AcummulationBuffer
 
 constexpr size_t modulatedSize2 = sizeof(AcummulationBuffer) % 256;
 static_assert(modulatedSize2 == 0);
+
+struct OctreeBuffer
+{
+	int octreeLayerCount;
+	int octreeSize;
+
+	float padding[62];
+};
+
+constexpr size_t modulatedSize3 = sizeof(AcummulationBuffer) % 256;
+static_assert(modulatedSize3 == 0);
 
 class Graphics
 {
@@ -73,7 +84,7 @@ public:
 	void copyAccumulationBufferToBackbuffer();
 
 	void updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize);
-	void updateAccumulationVariables(bool aFocussed);
+	void updateAccumulationVariables(bool aShouldNotAccumulate);
 	void updateNoiseTexture(const Texture& aTexture);
 	void updateOctreeVariables(const Octree& aOctree);
 
@@ -152,10 +163,19 @@ private:
 	ConstantBuffer* computeConstantBuffer;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> computeConstantBufferResource;
-
+	
 	UINT8* pComputeCbvDataBegin = nullptr;
 	void* computeConstantBufferData = nullptr;
 	size_t computeConstantBufferSize{ 0 };
+
+	// const buffer for octree traversal
+	OctreeBuffer* octreeConstantBuffer;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> octreeConstantBufferResource;
+
+	UINT8* pOctreeCbvDataBegin = nullptr;
+	void* octreeConstantBufferData = nullptr;
+	size_t octreeConstantBufferSize{ 0 };
 
 	// constant buffer for frame accumalation shader
 	AcummulationBuffer* accumulationConstantBuffer;
