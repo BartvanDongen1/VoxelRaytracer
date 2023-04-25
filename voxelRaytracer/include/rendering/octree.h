@@ -18,8 +18,8 @@ struct OctreeNode
 {
 	uint32_t childrenIndex{ 0 };
 	uint32_t children{ 0 }; // lowest 8 bits used as flags, 24 bits of padding
-
-	float padding[2];
+	uint32_t parentIndex{ 0 };
+	uint32_t parentOctant{ 0 };
 };
 
 //16 btyes

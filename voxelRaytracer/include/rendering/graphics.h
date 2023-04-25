@@ -72,7 +72,7 @@ public:
 	Graphics();
 	~Graphics();
 
-	void init();
+	void init(const unsigned int aSizeX, const unsigned int aSizeY);
 	void shutdown();
 
 	void beginFrame();
@@ -92,10 +92,10 @@ private:
 	void updateConstantBuffer();
 
 	bool loadPipeline();
-	void loadAssets();
+	void loadAssets(const unsigned int aSizeX, const unsigned int aSizeY);
 
-	void loadComputeStage();
-	void loadAccumulationStage();
+	void loadComputeStage(const unsigned int aSizeX, const unsigned int aSizeY);
+	void loadAccumulationStage(const unsigned int aSizeX, const unsigned int aSizeY);
 
 	void initImGui();
 

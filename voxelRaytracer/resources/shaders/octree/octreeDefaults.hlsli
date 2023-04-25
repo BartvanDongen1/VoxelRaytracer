@@ -3,8 +3,8 @@ struct OctreeNode
 {
     unsigned int childrenIndex;
     unsigned int children;
-    
-    float padding[2];
+    unsigned int parentIndex;
+    unsigned int parentOctant;
 };
 
 struct OctreeNodes

@@ -19,14 +19,13 @@ Renderer::~Renderer()
 	delete cameraController;
 }
 
-void Renderer::init()
+void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 {
-
 	OctreeItem myItem;
 	myItem.color = glm::vec3(1, 1, 1);
 
-	Window::init(1920, 1080, "Voxel Renderer");
-	graphics->init();
+	Window::init(aSizeX, aSizeY, "Voxel Renderer");
+	graphics->init(aSizeX, aSizeY);
 	
 	cameraController->init();
 	camera = cameraController->getCamera();
@@ -36,11 +35,12 @@ void Renderer::init()
 
 
 	//scene = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
-	scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 64);
+	//scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 64);
 
-	//scene = new VoxelModel(64, 64, 64);
-	
-	//initRandomVoxels(scene, 20);
+	scene = new VoxelModel(64, 64, 64);
+	//initFilled(scene);
+
+	initRandomVoxels(scene, 20);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
@@ -53,8 +53,6 @@ void Renderer::init()
 
 void Renderer::update(float aDeltaTime)
 {
-	offset += aDeltaTime / 10;
-
 	Window::processMessages();
 
 	// controller updates

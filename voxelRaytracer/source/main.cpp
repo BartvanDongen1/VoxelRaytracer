@@ -10,7 +10,7 @@ int main()
 	Renderer myRenderer;
 	InputManager::init();
 
-	myRenderer.init();
+	myRenderer.init(512, 512);
 	bool shouldClose = false;
 	while (!Window::getShouldClose())
 	{

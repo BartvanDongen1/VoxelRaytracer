@@ -24,10 +24,10 @@ Graphics::~Graphics()
     delete accumulationConstantBuffer;
 }
 
-void Graphics::init()
+void Graphics::init(const unsigned int aSizeX, const unsigned int aSizeY)
 {
 	loadPipeline();
-	loadAssets();
+	loadAssets(aSizeX, aSizeY);
 
 	initImGui();
 }
@@ -452,7 +452,7 @@ bool Graphics::loadPipeline()
     return true;
 }
 
-void Graphics::loadAssets()
+void Graphics::loadAssets(const unsigned int aSizeX, const unsigned int aSizeY)
 {
     // Create the command list.
     ThrowIfFailed(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[frameIndex].Get(), nullptr, IID_PPV_ARGS(&commandList)));
@@ -476,17 +476,17 @@ void Graphics::loadAssets()
         waitForGpu();
     }
 
-    loadComputeStage();
-    loadAccumulationStage();
+    loadComputeStage(aSizeX, aSizeY);
+    loadAccumulationStage(aSizeX, aSizeY);
 }
 
-void Graphics::loadComputeStage()
+void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aSizeY)
 {
     const D3D12_HEAP_PROPERTIES myDefaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
     //create out textures for the compute shader
     {
-        const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, 1920, 1080, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, aSizeX, aSizeY, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         ThrowIfFailed(
             device->CreateCommittedResource(
                 &myDefaultHeapProperties,
@@ -578,10 +578,13 @@ void Graphics::loadComputeStage()
     }
 
     // Enable better shader debugging with the graphics debugging tools.
-    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    //UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     
+    // use for checking assembly
+    //UINT compileFlags = D3DCOMPILE_DEBUG;
+
     // use for profiling
-    //UINT compileFlags = NULL;
+    UINT compileFlags = NULL;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
     D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "7", NULL, NULL};
@@ -698,13 +701,13 @@ void Graphics::loadComputeStage()
     }
 }
 
-void Graphics::loadAccumulationStage()
+void Graphics::loadAccumulationStage(const unsigned int aSizeX, const unsigned int aSizeY)
 {
     const D3D12_HEAP_PROPERTIES myDefaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 
     //create out textures for the frame accumulation shader
     {
-        const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 1920, 1080, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        const D3D12_RESOURCE_DESC myTextureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, aSizeX, aSizeY, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         ThrowIfFailed(
             device->CreateCommittedResource(
                 &myDefaultHeapProperties,

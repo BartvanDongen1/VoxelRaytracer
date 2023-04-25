@@ -66,6 +66,9 @@ void Octree::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
 	int myScale = size;
 	uint32_t myNodeIndex = 1;
 	
+	int myParentIndex = 0;
+	int myParentOctant = 0;
+
 	int myLocalX = aX, myLocalY = aY, myLocalZ = aZ;
 	OctreeNode* myCurrentNode = myTopLevelNode;
 	while (true)
@@ -82,7 +85,6 @@ void Octree::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
 
 		if (myCurrentNode)
 		{
-			int test = (1 << myOctantOffset);
 			myCurrentNode->children |= (1 << myOctantOffset);
 		}
 
@@ -92,6 +94,12 @@ void Octree::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
 			flatTree[myNodeIndex][myOctantOffset].item = aItem;
 			break;
 		}
+
+		flatTree[myNodeIndex][myOctantOffset].node.parentIndex = myParentIndex;
+		flatTree[myNodeIndex][myOctantOffset].node.parentOctant = myParentOctant;
+
+		myParentIndex = myNodeIndex;
+		myParentOctant = myOctantOffset;
 
 		myCurrentNode = &flatTree[myNodeIndex][myOctantOffset].node;
 

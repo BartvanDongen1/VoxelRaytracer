@@ -1,5 +1,7 @@
 //#include "octree/octreeTraversal1.hlsl"
-#include "octree/octreeTraversal2.hlsl"
+//#include "octree/octreeTraversal2.hlsl"
+//#include "octree/octreeTraversal2optimized.hlsl"
+#include "octree/octreeTraversal2stackless.hlsl"
 
 RWTexture2D<float4> OutputTexture : register(u0);
 
@@ -69,8 +71,9 @@ void main( uint3 DTid : SV_DispatchThreadID )
 
     if (result.hitDistance != FLOAT_MAX)
     {
-        const float brightness = result.hitDistance / 100.f;
+        const float brightness = (result.hitDistance / 100.f) + 0.2;
         OutputTexture[DTid.xy] += float4(brightness, brightness, brightness, 1);
+        //OutputTexture[DTid.xy] += float4(result.item.color, 1);
     }
     else
     {

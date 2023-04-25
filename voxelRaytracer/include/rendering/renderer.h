@@ -15,17 +15,17 @@ public:
 	Renderer();
 	~Renderer();
 
-	void init();
+	void init(const unsigned int aSizeX, const unsigned int aSizeY);
 	void update(float aDeltaTime);
 	void shutdown();
 private:
 	Graphics* graphics;
 	
-	VoxelModel* scene;
+	VoxelModel* scene{ nullptr };
 
 	Controller* cameraController;
-	Camera* camera;
-	Octree* octree;
+	Camera* camera{ nullptr };
+	Octree* octree{ nullptr };
 
 	ImguiWindowManager imguiWindow;
 
