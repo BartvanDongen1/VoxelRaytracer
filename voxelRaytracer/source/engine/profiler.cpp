@@ -1,5 +1,13 @@
 #include "engine/profiler.h"
 
+Profiler::~Profiler()
+{
+	for (const auto& item : profileValues)
+	{
+		delete item.second;
+	}
+}
+
 void Profiler::startProfiling()
 {
 	clearData();
@@ -11,28 +19,65 @@ void Profiler::stopProfiling()
 	isProfiling = false;
 }
 
-void Profiler::update(float aDeltaTime)
+void Profiler::addProfileValue(std::string aName)
+{
+	ProfileValue* myProfileValue = new ProfileValue();
+	myProfileValue->name = aName;
+
+	profileValues.insert({ aName, myProfileValue });
+}
+
+void Profiler::updateProfileValue(std::string aName, float aValue)
 {
 	if (isProfiling)
 	{
-		accumulatedProflingFrames++;
-		accumulatedProflingTime += aDeltaTime;
+		if (profileValues.count(aName) == 0)
+		{
+			addProfileValue(aName);
+		}
 
-		timestepAccumulatedFrames++;
-		timestepAccumulatedTime += aDeltaTime;
+		ProfileValue* myProfileValue = profileValues.find(aName)->second;
 
 		if (currentTimestep < FRAME_TIME_ARRAY_SIZE)
 		{
+			myProfileValue->totalValue += aValue;
+			myProfileValue->currentValue += aValue;
+
+			myProfileValue->accumulatedValues++;
+
+
 			if (timestepAccumulatedTime > 1.f / PLOT_WRITES_PER_SECOND)
 			{
-				float myAverageDeltaTime = timestepAccumulatedTime / timestepAccumulatedFrames;
-				averageFrameTimeArray[currentTimestep++] = myAverageDeltaTime * 1000.f;
+				float myAverageValue = myProfileValue->currentValue / myProfileValue->accumulatedValues;
+				myProfileValue->values[currentTimestep] = myAverageValue;
 
-				timestepAccumulatedTime -= 1.f / PLOT_WRITES_PER_SECOND;
-				timestepAccumulatedFrames = 0;
+				myProfileValue->currentValue = 0.f;
+				myProfileValue->accumulatedValues = 0;
 			}
 		}
+
+		profileValues[aName] = myProfileValue;
 	}
+}
+
+void Profiler::update(float aDeltaTime)
+{
+	if (!isProfiling) return;
+
+	accumulatedProflingFrames++;
+	accumulatedProflingTime += aDeltaTime;
+	timestepAccumulatedFrames++;
+
+	if (!(currentTimestep < FRAME_TIME_ARRAY_SIZE)) return;
+
+	if (timestepAccumulatedTime > 1.f / PLOT_WRITES_PER_SECOND)
+	{
+		timestepAccumulatedTime -= 1.f / PLOT_WRITES_PER_SECOND;
+		currentTimestep++;
+		timestepAccumulatedFrames = 0;
+	}
+
+	timestepAccumulatedTime += aDeltaTime;
 }
 
 void Profiler::clearData()
@@ -45,6 +90,12 @@ void Profiler::clearData()
 		averageFrameTimeArray[i] = 0.f;
 		timeArray[i] = static_cast<float>(i) / PLOT_WRITES_PER_SECOND;
 	}
+
+	for (const auto& item : profileValues)
+	{
+		delete item.second;
+	}
+	profileValues.clear();
 
 	timestepAccumulatedFrames = 0;
 	timestepAccumulatedTime = 0.f;

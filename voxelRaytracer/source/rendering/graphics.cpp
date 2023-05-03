@@ -2,6 +2,7 @@
 #include "window.h"
 #include "helper.h"
 #include "engine\logger.h"
+#include "engine\timer.h"
 
 #include "imgui-docking/imgui_impl_dx12.h"
 #include "imgui-docking/imgui_impl_win32.h"
@@ -91,18 +92,21 @@ void Graphics::beginFrame()
 
     profiler->NewFrame();
 
-    profiler->BeginProfileScope(commandList.Get(), "frame");
+    profiler->BeginProfileScope(commandList.Get(), "RenderTime");
 }
 
 void Graphics::endFrame()
 {
-    profiler->EndProfileScope("frame");
+
+    profiler->EndProfileScope("RenderTime");
 
     profiler->EndFrame();
+
 
     // Indicate that the back buffer will now be used to present.
     auto ResourceBarrier2 = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     commandList->ResourceBarrier(1, &ResourceBarrier2);
+
 
     ThrowIfFailed(commandList->Close());
 
@@ -123,10 +127,19 @@ void Graphics::endFrame()
     // If the next frame is not ready to be rendered yet, wait until it is ready.
     if (fence->GetCompletedValue() < fenceValues[frameIndex])
     {
+        //Timer myTimer;
+
         ThrowIfFailed(fence->SetEventOnCompletion(fenceValues[frameIndex], fenceEvent));
         WaitForSingleObjectEx(fenceEvent, INFINITE, FALSE);
-    }
 
+        //float myTime = myTimer.getTotalTime() * 1000;
+        //LOG_INFO("waited: %f MS, for GPU to finish", myTime);
+    }
+    else
+    {
+        //LOG_WARNING("CPU did not have to wait for GPU to complete rendering: %i", fenceValues[frameIndex]);
+    }
+    
     // Set the fence value for the next frame.
     fenceValues[frameIndex] = currentFenceValue + 1;
 }
@@ -191,7 +204,7 @@ void Graphics::renderFrame()
 
     profiler->EndProfileScope("main ray");
 
-    profiler->BeginProfileScope(commandList.Get(), "accumulation");
+    profiler->BeginProfileScope(commandList.Get(), "accumulation shader");
 
     //accumulation shader
     {
@@ -215,7 +228,7 @@ void Graphics::renderFrame()
 
     commandList->ResourceBarrier(1, &barrier);
 
-    profiler->EndProfileScope("accumulation");
+    profiler->EndProfileScope("accumulation shader");
 }
 
 void Graphics::renderImGui()

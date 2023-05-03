@@ -6,6 +6,8 @@
 #include "engine\inputManager.h"
 #include "engine\voxelModelLoader.h"
 #include "rendering\octree.h"
+#include "engine\timer.h"
+#include "engine\logger.h"
 
 Renderer::Renderer()
 {
@@ -35,12 +37,12 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	octree = new Octree();
 
 	//scene = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
-	//scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 128);
+	scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 128);
 
-	scene = new VoxelModel(128, 128, 128);
+	//scene = new VoxelModel(128, 128, 128);
 	//initFilled(scene);
 
-	initRandomVoxels(scene, 100);
+	//initRandomVoxels(scene, 100);
 	//initRandomVoxels(scene, 500);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
@@ -95,24 +97,24 @@ void Renderer::update(float aDeltaTime)
 		cameraController->update(aDeltaTime);
 	}
 
+
 	graphics->updateCameraVariables(*camera, windowFocused, static_cast<int>(octree->getSize()));
 	graphics->updateAccumulationVariables(windowFocused || !cameraController->getInputsEnabled());
 
 	//rendering
-	graphics->beginFrame();
+	graphics->beginFrame(); 
 
 
 	graphics->renderFrame();
+
 	graphics->copyAccumulationBufferToBackbuffer();
 
+
 	//imgui
-	imguiWindow.updateAndRender(*graphics, aDeltaTime);
-	graphics->renderImGui();
-
+	imguiWindow.updateAndRender(*graphics, aDeltaTime); 
+	graphics->renderImGui();							
+	
 	graphics->endFrame();
-
-	//update profiling data only after all rendering is done
-	//imguiWindow.updateProfilingData();
 }
 
 void Renderer::shutdown()

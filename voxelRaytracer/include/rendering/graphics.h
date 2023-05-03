@@ -17,7 +17,7 @@
 
 struct ImGuiIO;
 
-#define FRAME_COUNT 2
+#define FRAME_COUNT 3
 #define SHADER_THREAD_COUNT_X 8
 #define SHADER_THREAD_COUNT_Y 4
 

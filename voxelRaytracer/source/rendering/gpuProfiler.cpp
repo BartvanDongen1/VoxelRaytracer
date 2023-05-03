@@ -3,7 +3,7 @@
 
 #include <cassert>
 
-#define FRAME_COUNT 2
+#define FRAME_COUNT 3
 
 void GPUProfiler::init(ID3D12Device* aDevice, ID3D12CommandQueue* aQueue, IDXGISwapChain3* aSwapChain)
 {
