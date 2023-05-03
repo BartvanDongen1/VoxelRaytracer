@@ -38,8 +38,10 @@ private:
 	float pitch{ 0 };
 	float yaw{ 0 };
 
+	float flySpeedAdjustmentScale{ 0.3f };
+
 	float speedScale{ 1.f };
 	float minSpeedScale{ 0.1f };
-	float maxSpeedScale{ 5.f };
+	float maxSpeedScale{ 20.f };
 };
 

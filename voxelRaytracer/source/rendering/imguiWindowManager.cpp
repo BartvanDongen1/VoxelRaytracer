@@ -31,6 +31,11 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 	Text("renderTime (MS): %f", aDeltaTime * 1000.f);
 	Text("accumulated frames: %i", framesAccumulated);
 	
+	for (const auto& item : gpuProfiler->GetProfilerResults())
+	{
+		Text("%s: %f", item.name.c_str(), item.timeMS);
+	}
+
 	if (Button("profiler"))
 	{
 		profilerOpen = true;
@@ -225,6 +230,11 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 void ImguiWindowManager::setController(Controller* aController)
 {
 	benchmarkManager->setController(aController);
+}
+
+void ImguiWindowManager::setGpuProfiler(GPUProfiler* aGpuProfiler)
+{
+	gpuProfiler = aGpuProfiler;
 }
 
 void ImguiWindowManager::update(const Graphics& aGraphics, float aDeltaTime)

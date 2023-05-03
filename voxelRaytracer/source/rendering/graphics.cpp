@@ -1,6 +1,7 @@
 #include "rendering\graphics.h"
 #include "window.h"
 #include "helper.h"
+#include "engine\logger.h"
 
 #include "imgui-docking/imgui_impl_dx12.h"
 #include "imgui-docking/imgui_impl_win32.h"
@@ -15,13 +16,21 @@ Graphics::Graphics()
     octreeConstantBuffer = new OctreeBuffer();
     
     accumulationConstantBuffer = new AcummulationBuffer();
+
+    voxelGridConstantBuffer = new VoxelGridBuffer();
+
+    profiler = new GPUProfiler();
 }
 
 Graphics::~Graphics()
 {
+    //delete const buffers
     delete computeConstantBuffer;
     delete octreeConstantBuffer;
     delete accumulationConstantBuffer;
+    delete voxelGridConstantBuffer;
+
+    delete profiler;
 }
 
 void Graphics::init(const unsigned int aSizeX, const unsigned int aSizeY)
@@ -30,6 +39,8 @@ void Graphics::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	loadAssets(aSizeX, aSizeY);
 
 	initImGui();
+
+    profiler->init(device.Get(), commandQueue.Get(), swapChain.Get());
 }
 
 void Graphics::shutdown()
@@ -70,17 +81,25 @@ void Graphics::beginFrame()
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     // Record commands.
-    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    //const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     //commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
     // Start the Dear ImGui frame
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+
+    profiler->NewFrame();
+
+    profiler->BeginProfileScope(commandList.Get(), "frame");
 }
 
 void Graphics::endFrame()
 {
+    profiler->EndProfileScope("frame");
+
+    profiler->EndFrame();
+
     // Indicate that the back buffer will now be used to present.
     auto ResourceBarrier2 = CD3DX12_RESOURCE_BARRIER::Transition(renderTargets[frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     commandList->ResourceBarrier(1, &ResourceBarrier2);
@@ -100,7 +119,7 @@ void Graphics::endFrame()
 
     // Update the frame index.
     frameIndex = swapChain->GetCurrentBackBufferIndex();
-
+    
     // If the next frame is not ready to be rendered yet, wait until it is ready.
     if (fence->GetCompletedValue() < fenceValues[frameIndex])
     {
@@ -119,52 +138,84 @@ void Graphics::renderFrame()
     ID3D12DescriptorHeap* pHeaps[] = { cbvSrvUavHeap.Get() };
     commandList->SetDescriptorHeaps(_countof(pHeaps), pHeaps);
 
-    //compute shader for raytracing
-    commandList->SetComputeRootSignature(computeRootSignature.Get());
-
-    commandList->SetComputeRootDescriptorTable(0, cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart());
-
-    CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
-    commandList->SetComputeRootDescriptorTable(1, descriptorHandle);
-
-    CD3DX12_GPU_DESCRIPTOR_HANDLE noiseTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
-    commandList->SetComputeRootDescriptorTable(2, noiseTextureDescriptorHandle);
-
-    CD3DX12_GPU_DESCRIPTOR_HANDLE octreeBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
-    commandList->SetComputeRootDescriptorTable(3, octreeBufferDescriptorHandle);
-
-    CD3DX12_GPU_DESCRIPTOR_HANDLE octreeConstBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
-    commandList->SetComputeRootDescriptorTable(4, octreeConstBufferDescriptorHandle);
-
-    commandList->SetPipelineState(computePipelineState.Get());
-    commandList->Dispatch(threadGroupX, threadGroupY, 1);
+    profiler->BeginProfileScope(commandList.Get(), "main ray");
     
-    auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+    //compute shader for raytracing
+    {
+        commandList->SetComputeRootSignature(computeRootSignature.Get());
 
+        // camera const buffer
+        CD3DX12_GPU_DESCRIPTOR_HANDLE constBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(0, constBufferDescriptorHandle);
+
+        // output texture
+        CD3DX12_GPU_DESCRIPTOR_HANDLE outputTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 0, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(1, outputTextureDescriptorHandle);
+
+        // noise texture
+        CD3DX12_GPU_DESCRIPTOR_HANDLE noiseTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(2, noiseTextureDescriptorHandle);
+
+        // octree buffer
+        CD3DX12_GPU_DESCRIPTOR_HANDLE octreeBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(3, octreeBufferDescriptorHandle);
+
+        // octree const buffer
+        CD3DX12_GPU_DESCRIPTOR_HANDLE octreeConstBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(4, octreeConstBufferDescriptorHandle);
+
+        {
+            // voxel grid top level buffer
+            CD3DX12_GPU_DESCRIPTOR_HANDLE GridTopLayerDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 8, cbvSrvUavDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(5, GridTopLayerDescriptorHandle);
+
+            // voxel grid layer 1 buffer
+            CD3DX12_GPU_DESCRIPTOR_HANDLE GridLayer1DescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 9, cbvSrvUavDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(6, GridLayer1DescriptorHandle);
+
+            // voxel grid layer 2 buffer
+            CD3DX12_GPU_DESCRIPTOR_HANDLE GridLayer2DescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 10, cbvSrvUavDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(7, GridLayer2DescriptorHandle);
+
+            // voxel grid const buffer
+            CD3DX12_GPU_DESCRIPTOR_HANDLE GridConstBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 7, cbvSrvUavDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(8, GridConstBufferDescriptorHandle);
+        }
+        
+        commandList->SetPipelineState(computePipelineState.Get());
+        commandList->Dispatch(threadGroupX, threadGroupY, 1);
+    }
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
     commandList->ResourceBarrier(1, &barrier);
+
+    profiler->EndProfileScope("main ray");
+
+    profiler->BeginProfileScope(commandList.Get(), "accumulation");
 
     //accumulation shader
-    commandList->SetComputeRootSignature(accumulationRootSignature.Get());
-
     {
-        CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle1(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
-        commandList->SetComputeRootDescriptorTable(0, descriptorHandle1);
-    }
+        commandList->SetComputeRootSignature(accumulationRootSignature.Get());
 
-    {
-        CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorHandle2(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
-        commandList->SetComputeRootDescriptorTable(1, descriptorHandle2);
-    }
+        // input texture
+        CD3DX12_GPU_DESCRIPTOR_HANDLE inputTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 0, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(0, inputTextureDescriptorHandle);
 
-    {
-        CD3DX12_GPU_DESCRIPTOR_HANDLE noiseTextureDescriptorHandle1(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 7, cbvSrvUavDescriptorSize);
-        commandList->SetComputeRootDescriptorTable(2, noiseTextureDescriptorHandle1);
-    }
+        // output texture
+        CD3DX12_GPU_DESCRIPTOR_HANDLE outputTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(1, outputTextureDescriptorHandle);
 
-    commandList->SetPipelineState(accumulationPipelineState.Get());
-    commandList->Dispatch(threadGroupX, threadGroupY, 1);
+        // accumulation const buffer
+        CD3DX12_GPU_DESCRIPTOR_HANDLE accumulationConstBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
+        commandList->SetComputeRootDescriptorTable(2, accumulationConstBufferDescriptorHandle);
+
+        commandList->SetPipelineState(accumulationPipelineState.Get());
+        commandList->Dispatch(threadGroupX, threadGroupY, 1);
+    }
 
     commandList->ResourceBarrier(1, &barrier);
+
+    profiler->EndProfileScope("accumulation");
 }
 
 void Graphics::renderImGui()
@@ -309,6 +360,70 @@ void Graphics::updateOctreeVariables(const Octree& aOctree)
     octreeConstantBuffer->octreeLayerCount = aOctree.getLayerCount();
 }
 
+void Graphics::updateVoxelGridVariables(const VoxelGrid& aGrid)
+{
+    //update top level
+    {
+        void* mappedData;
+
+        CD3DX12_RANGE readRange(0, 0);
+        ThrowIfFailed(voxelGridTopLevelBuffer->Map(0, &readRange, &mappedData));
+
+        size_t test = aGrid.getGridSize() * sizeof(int);
+
+        // Update the data
+        memcpy(mappedData, aGrid.getGridData(), test);
+
+        // Unmap the buffer
+        voxelGridTopLevelBuffer->Unmap(0, &readRange);
+    }
+
+    //update level 1
+    {
+        void* mappedData;
+
+        CD3DX12_RANGE readRange(0, 0);
+        ThrowIfFailed(voxelGridLayer1Buffer->Map(0, &readRange, &mappedData));
+
+        size_t test = aGrid.getLayer1ChunkDataSize() * sizeof(Layer1Chunk);
+
+        // Update the data
+        memcpy(mappedData, aGrid.getLayer1ChunkData(), test);
+
+        // Unmap the buffer
+        voxelGridLayer1Buffer->Unmap(0, &readRange);
+    }
+
+    //update level 2
+    {
+        void* mappedData;
+
+        CD3DX12_RANGE readRange(0, 0);
+        ThrowIfFailed(voxelGridLayer2Buffer->Map(0, &readRange, &mappedData));
+
+        size_t test = aGrid.getLayer2ChunkDataSize() * sizeof(Layer2Chunk);
+
+        // Update the data
+        memcpy(mappedData, aGrid.getLayer2ChunkData(), test);
+
+        // Unmap the buffer
+        voxelGridLayer2Buffer->Unmap(0, &readRange);
+    }
+
+    //update constant buffer
+    voxelGridConstantBuffer->sizeX = aGrid.getSizeX();
+    voxelGridConstantBuffer->sizeY = aGrid.getSizeY();
+    voxelGridConstantBuffer->sizeZ = aGrid.getSizeZ();
+
+    voxelGridConstantBuffer->layer1ChunkSize = layer1Size;
+    voxelGridConstantBuffer->layer2ChunkSize = layer2Size;
+}
+
+GPUProfiler* Graphics::getProfiler() const
+{
+    return profiler;
+}
+
 void Graphics::updateConstantBuffer()
 {
     memcpy(pOctreeCbvDataBegin, octreeConstantBuffer, sizeof(OctreeBuffer));
@@ -316,7 +431,9 @@ void Graphics::updateConstantBuffer()
     computeConstantBuffer->maxThreadIter = glm::vec4(Window::getWidth(), Window::getHeight(), 0, 0);
     memcpy(pComputeCbvDataBegin, computeConstantBuffer, sizeof(ConstantBuffer));
 
-    memcpy(pAccumulationCbvDataBegin, accumulationConstantBuffer, sizeof(ConstantBuffer));
+    memcpy(pAccumulationCbvDataBegin, accumulationConstantBuffer, sizeof(AcummulationBuffer));
+
+    memcpy(pVoxelGridBufferCbvDataBegin, voxelGridConstantBuffer, sizeof(VoxelGridBuffer));
 }
 
 bool Graphics::loadPipeline()
@@ -416,7 +533,7 @@ bool Graphics::loadPipeline()
 
         // Describe and create a Unordered Access View (UAV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 8;
+        srvHeapDesc.NumDescriptors = 11;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&cbvSrvUavHeap)));
@@ -501,7 +618,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT_Y;
 
         // create uav
-        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 0, cbvSrvUavDescriptorSize);
         device->CreateUnorderedAccessView(raytraceOutputTexture.Get(), nullptr, nullptr, uavHandle1);
     }
    
@@ -535,7 +652,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         mySceneDataDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         mySceneDataDesc.Texture3D.MipLevels = 1;
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 2, cbvSrvUavDescriptorSize);
         device->CreateShaderResourceView(noiseTexture.Get(), &mySceneDataDesc, srvHandle);
     }
 
@@ -547,7 +664,8 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         // max size of 16x16x16 octree
         //myAllocationInfo.SizeInBytes = 586 * sizeof(OctreeElement[8]);
         //myAllocationInfo.SizeInBytes = 3004 * sizeof(OctreeElement[8]);
-        myAllocationInfo.SizeInBytes = 15584 * sizeof(OctreeElement[8]);
+        //myAllocationInfo.SizeInBytes = 52278 * sizeof(OctreeElement[8]);
+        myAllocationInfo.SizeInBytes = 124622 * sizeof(OctreeElement[8]);
         myAllocationInfo.Alignment = 0;
 
         const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
@@ -570,14 +688,146 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         // 586 is the size of my current octree
         //myOctreeDataDesc.Buffer.NumElements = 586;
         //myOctreeDataDesc.Buffer.NumElements = 3004;
-        myOctreeDataDesc.Buffer.NumElements = 15584;
+        //myOctreeDataDesc.Buffer.NumElements = 52278;
+        myOctreeDataDesc.Buffer.NumElements = 124622;
         myOctreeDataDesc.Buffer.StructureByteStride = sizeof(OctreeElement[8]);
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
         device->CreateShaderResourceView(octreeBuffer.Get(), &myOctreeDataDesc, srvHandle);
     }
 
-    // Enable better shader debugging with the graphics debugging tools.
+    //create buffers for voxel grid
+    {
+        //const buffer
+        {
+            auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+            auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(VoxelGridBuffer));
+
+            ThrowIfFailed(device->CreateCommittedResource(
+                &heapUpload,
+                D3D12_HEAP_FLAG_NONE,
+                &resourceDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&voxelGridBufferResource)));
+
+            // Map and initialize the constant buffer. We don't unmap this until the
+            // app closes. Keeping things mapped for the lifetime of the resource is okay.
+            CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+            ThrowIfFailed(voxelGridBufferResource->Map(0, &readRange, reinterpret_cast<void**>(&pVoxelGridBufferCbvDataBegin)));
+
+            // Describe and create a constant buffer view.
+            D3D12_CONSTANT_BUFFER_VIEW_DESC myBufferDesc{};
+
+            myBufferDesc.BufferLocation = voxelGridBufferResource->GetGPUVirtualAddress();
+            myBufferDesc.SizeInBytes = static_cast<UINT>(sizeof(VoxelGridBuffer));
+
+            CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 7, cbvSrvUavDescriptorSize);
+            device->CreateConstantBufferView(&myBufferDesc, cbvHandle);
+        }
+
+        // top level
+        {
+            auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+            D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
+            // max chunks for 128x128x128 scene
+            myAllocationInfo.SizeInBytes = 2097152 * sizeof(int);
+            myAllocationInfo.Alignment = 0;
+
+            const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
+
+            ThrowIfFailed(
+                device->CreateCommittedResource(
+                    &heapUpload,
+                    D3D12_HEAP_FLAG_NONE,
+                    &myBufferDesc,
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr,
+                    IID_PPV_ARGS(voxelGridTopLevelBuffer.ReleaseAndGetAddressOf())));
+
+            voxelGridTopLevelBuffer->SetName(L"gridTopLevelBuffer");
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC myOctreeDataDesc = {};
+            myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
+            myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            myOctreeDataDesc.Buffer.NumElements = 2097152;
+            myOctreeDataDesc.Buffer.StructureByteStride = sizeof(int);
+
+            CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 8, cbvSrvUavDescriptorSize);
+            device->CreateShaderResourceView(voxelGridTopLevelBuffer.Get(), &myOctreeDataDesc, srvHandle);
+        }
+
+        // layer 1
+        {
+            auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+            D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
+            // max chunks for 128x128x128 scene
+            myAllocationInfo.SizeInBytes = 512 * sizeof(Layer1Chunk);
+            myAllocationInfo.Alignment = 0;
+
+            const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
+
+            ThrowIfFailed(
+                device->CreateCommittedResource(
+                    &heapUpload,
+                    D3D12_HEAP_FLAG_NONE,
+                    &myBufferDesc,
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr,
+                    IID_PPV_ARGS(voxelGridLayer1Buffer.ReleaseAndGetAddressOf())));
+
+            voxelGridLayer1Buffer->SetName(L"gridLayer1Buffer");
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC myOctreeDataDesc = {};
+            myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
+            myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            myOctreeDataDesc.Buffer.NumElements = 512;
+            myOctreeDataDesc.Buffer.StructureByteStride = sizeof(Layer1Chunk);
+
+            CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 9, cbvSrvUavDescriptorSize);
+            device->CreateShaderResourceView(voxelGridLayer1Buffer.Get(), &myOctreeDataDesc, srvHandle);
+        }
+
+        // layer 2
+        {
+            auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+            D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
+            // max chunks for 128x128x128 scene
+            myAllocationInfo.SizeInBytes = 32768 * sizeof(Layer2Chunk);
+            myAllocationInfo.Alignment = 0;
+
+            const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
+
+            ThrowIfFailed(
+                device->CreateCommittedResource(
+                    &heapUpload,
+                    D3D12_HEAP_FLAG_NONE,
+                    &myBufferDesc,
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr,
+                    IID_PPV_ARGS(voxelGridLayer2Buffer.ReleaseAndGetAddressOf())));
+
+            voxelGridLayer2Buffer->SetName(L"gridLayer2Buffer");
+
+            D3D12_SHADER_RESOURCE_VIEW_DESC myOctreeDataDesc = {};
+            myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
+            myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            myOctreeDataDesc.Buffer.NumElements = 32768;
+            myOctreeDataDesc.Buffer.StructureByteStride = sizeof(Layer2Chunk);
+
+            CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 10, cbvSrvUavDescriptorSize);
+            device->CreateShaderResourceView(voxelGridLayer2Buffer.Get(), &myOctreeDataDesc, srvHandle);
+        }
+
+    }
+
+    // use for debugging shader
     //UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     
     // use for checking assembly
@@ -593,23 +843,36 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctree.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeRework.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeReworkOptimized.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/test.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/test.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/DDATraversal.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
-    CD3DX12_DESCRIPTOR_RANGE1 myRanges[5];
+    CD3DX12_DESCRIPTOR_RANGE1 myRanges[9];
     myRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
     myRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
     myRanges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
+    
+    myRanges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+    myRanges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
+    myRanges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
+    myRanges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);
 
-    CD3DX12_ROOT_PARAMETER1 myRootParameters[5];
-    myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL);
-    myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL);
-    myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL);
-    myRootParameters[3].InitAsDescriptorTable(1, &myRanges[3], D3D12_SHADER_VISIBILITY_ALL);
-    myRootParameters[4].InitAsDescriptorTable(1, &myRanges[4], D3D12_SHADER_VISIBILITY_ALL);
+    CD3DX12_ROOT_PARAMETER1 myRootParameters[9];
+    myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL); // camera const buffer
+    myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL); // output texture
+    myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL); // noise texture
+
+    myRootParameters[3].InitAsDescriptorTable(1, &myRanges[3], D3D12_SHADER_VISIBILITY_ALL); // octree buffer
+    myRootParameters[4].InitAsDescriptorTable(1, &myRanges[4], D3D12_SHADER_VISIBILITY_ALL); // octree const buffer
+    
+    myRootParameters[5].InitAsDescriptorTable(1, &myRanges[5], D3D12_SHADER_VISIBILITY_ALL); // voxel grid top level buffer
+    myRootParameters[6].InitAsDescriptorTable(1, &myRanges[6], D3D12_SHADER_VISIBILITY_ALL); // voxel grid layer 1 buffer
+    myRootParameters[7].InitAsDescriptorTable(1, &myRanges[7], D3D12_SHADER_VISIBILITY_ALL); // voxel grid layer 2 buffer
+    myRootParameters[8].InitAsDescriptorTable(1, &myRanges[8], D3D12_SHADER_VISIBILITY_ALL); // voxel grid const buffer
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
@@ -668,7 +931,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         myBufferDesc.BufferLocation = computeConstantBufferResource->GetGPUVirtualAddress();
         myBufferDesc.SizeInBytes = static_cast<UINT>(sizeof(ConstantBuffer));
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 0, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 3, cbvSrvUavDescriptorSize);
         device->CreateConstantBufferView(&myBufferDesc, cbvHandle);
     }
 
@@ -696,7 +959,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         myBufferDesc.BufferLocation = octreeConstantBufferResource->GetGPUVirtualAddress();
         myBufferDesc.SizeInBytes = static_cast<UINT>(sizeof(OctreeBuffer));
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 6, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
         device->CreateConstantBufferView(&myBufferDesc, cbvHandle);
     }
 }
@@ -716,13 +979,13 @@ void Graphics::loadAccumulationStage(const unsigned int aSizeX, const unsigned i
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 nullptr,
                 IID_PPV_ARGS(accumulationOutputTexture.ReleaseAndGetAddressOf())));
-        accumulationOutputTexture->SetName(L"accumulation Texture 0");
+        accumulationOutputTexture->SetName(L"accumulation Texture");
 
-        threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT_X;
-        threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT_Y;
+        //threadGroupX = static_cast<uint32_t>(myTextureDesc.Width) / SHADER_THREAD_COUNT_X;
+        //threadGroupY = myTextureDesc.Height / SHADER_THREAD_COUNT_Y;
 
         // create uav
-        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 5, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle1(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 1, cbvSrvUavDescriptorSize);
         device->CreateUnorderedAccessView(accumulationOutputTexture.Get(), nullptr, nullptr, uavHandle1);
     }
 
@@ -750,7 +1013,7 @@ void Graphics::loadAccumulationStage(const unsigned int aSizeX, const unsigned i
         myBufferDesc.BufferLocation = accumulationConstantBufferResource->GetGPUVirtualAddress();
         myBufferDesc.SizeInBytes = static_cast<UINT>(sizeof(ConstantBuffer));
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 7, cbvSrvUavDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 4, cbvSrvUavDescriptorSize);
         device->CreateConstantBufferView(&myBufferDesc, cbvHandle);
     }
 
@@ -769,9 +1032,9 @@ void Graphics::loadAccumulationStage(const unsigned int aSizeX, const unsigned i
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
 
     CD3DX12_ROOT_PARAMETER1 myRootParameters[3];
-    myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL);
-    myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL);
-    myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL);
+    myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL); // input texture
+    myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL); // output texture
+    myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL); // accumulation const buffer
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 

@@ -60,7 +60,7 @@ void Controller::update(float aDeltaTime)
 	glm::vec3 tempAcceleration = glm::vec3(0.f);
 
 	// speed scale
-	speedScale += 0.1f * InputManager::getMouseScroll();
+	speedScale += flySpeedAdjustmentScale * InputManager::getMouseScroll();
 
 	if (speedScale < minSpeedScale) speedScale = minSpeedScale;
 	if (speedScale > maxSpeedScale) speedScale = maxSpeedScale;

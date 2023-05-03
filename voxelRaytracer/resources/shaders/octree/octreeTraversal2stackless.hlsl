@@ -1,5 +1,5 @@
-#include "octreeDefaults.hlsli"
-//#include "octree/octreeDefaults.hlsli"
+//#include "octreeDefaults.hlsli"
+#include "octree/octreeDefaults.hlsli"
 
 struct VoxelTraverseResult
 {

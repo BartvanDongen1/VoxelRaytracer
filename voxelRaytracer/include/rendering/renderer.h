@@ -1,5 +1,6 @@
 #pragma once
 #include "rendering\octree.h"
+#include "rendering\voxelGrid.h"
 #include "rendering\imguiWindowManager.h"
 
 class Graphics;
@@ -7,7 +8,6 @@ class Window;
 class Camera;
 class Controller;
 struct VoxelModel;
-class Octree;
 
 class Renderer
 {
@@ -25,7 +25,9 @@ private:
 
 	Controller* cameraController;
 	Camera* camera{ nullptr };
+	
 	Octree* octree{ nullptr };
+	VoxelGrid* voxelGrid{ nullptr };
 
 	ImguiWindowManager imguiWindow;
 

@@ -1,5 +1,5 @@
-//#include "octree/octreeTraversal1.hlsl"
-//#include "octree/octreeTraversal2.hlsl"
+//#include "octree/octreeTraversal1.hlsl" //unstable DO NOT USE
+//#include "octree/octreeTraversal2.hlsl" //unstable DO NOT USE
 //#include "octree/octreeTraversal2optimized.hlsl"
 #include "octree/octreeTraversal2stackless.hlsl"
 

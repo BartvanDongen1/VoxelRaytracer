@@ -1,7 +1,9 @@
 #pragma once
 #include "camera.h"
 #include "rendering\octree.h"
+#include "rendering\voxelGrid.h"
 #include "engine\texture.h"
+#include "gpuProfiler.h"
 
 #include <glm/vec4.hpp>
 
@@ -62,8 +64,23 @@ struct OctreeBuffer
 	float padding[62];
 };
 
-constexpr size_t modulatedSize3 = sizeof(AcummulationBuffer) % 256;
+constexpr size_t modulatedSize3 = sizeof(OctreeBuffer) % 256;
 static_assert(modulatedSize3 == 0);
+
+struct VoxelGridBuffer
+{
+	int sizeX;
+	int sizeY;
+	int sizeZ;
+
+	int layer1ChunkSize;
+	int layer2ChunkSize;
+
+	float padding[59];
+};
+
+constexpr size_t modulatedSize4 = sizeof(VoxelGridBuffer) % 256;
+static_assert(modulatedSize4 == 0);
 
 class Graphics
 {
@@ -87,6 +104,9 @@ public:
 	void updateAccumulationVariables(bool aShouldNotAccumulate);
 	void updateNoiseTexture(const Texture& aTexture);
 	void updateOctreeVariables(const Octree& aOctree);
+	void updateVoxelGridVariables(const VoxelGrid& aGrid);
+
+	GPUProfiler* getProfiler() const;
 
 private:
 	void updateConstantBuffer();
@@ -136,13 +156,18 @@ private:
 	ID3D12DescriptorHeap* pd3dSrvDescHeap = NULL;
 	ImGuiIO* io;
 
+	//profiling
+	GPUProfiler* profiler;
+
 	//compute shader stuff
 	Microsoft::WRL::ComPtr<ID3D12Resource>      raytraceOutputTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      accumulationOutputTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      noiseTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      octreeBuffer;
 
-	UINT8* pCbvDataBeginOctree = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridTopLevelBuffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridLayer1Buffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridLayer2Buffer;
 
 	int threadGroupX;
 	int threadGroupY;
@@ -154,36 +179,28 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> computePipelineState;
 
-
 	Microsoft::WRL::ComPtr<ID3DBlob> accumulationShader;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> accumulationRootSignature;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> accumulationPipelineState;
 
 	// constant buffer for compute shader
 	ConstantBuffer* computeConstantBuffer;
-
 	Microsoft::WRL::ComPtr<ID3D12Resource> computeConstantBufferResource;
-	
 	UINT8* pComputeCbvDataBegin = nullptr;
-	void* computeConstantBufferData = nullptr;
-	size_t computeConstantBufferSize{ 0 };
 
 	// const buffer for octree traversal
 	OctreeBuffer* octreeConstantBuffer;
-
 	Microsoft::WRL::ComPtr<ID3D12Resource> octreeConstantBufferResource;
-
 	UINT8* pOctreeCbvDataBegin = nullptr;
-	void* octreeConstantBufferData = nullptr;
-	size_t octreeConstantBufferSize{ 0 };
+
+	// constant buffer for voxel grid
+	VoxelGridBuffer* voxelGridConstantBuffer;
+	Microsoft::WRL::ComPtr<ID3D12Resource> voxelGridBufferResource;
+	UINT8* pVoxelGridBufferCbvDataBegin = nullptr;
 
 	// constant buffer for frame accumalation shader
 	AcummulationBuffer* accumulationConstantBuffer;
-
 	Microsoft::WRL::ComPtr<ID3D12Resource> accumulationConstantBufferResource;
-
 	UINT8* pAccumulationCbvDataBegin = nullptr;
-	void* accumulationConstantBufferData = nullptr;
-	size_t accumulationConstantBufferSize{ 0 };
 };
 

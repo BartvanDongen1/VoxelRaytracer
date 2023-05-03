@@ -2,6 +2,7 @@
 #include "graphics.h"
 #include "engine\benchmarkManager.h"
 #include "engine\profiler.h"
+#include "rendering\gpuProfiler.h"
 
 #define FRAME_TIME_ARRAY_SIZE 1000
 #define PLOT_WRITES_PER_SECOND 5
@@ -13,7 +14,9 @@ public:
 	~ImguiWindowManager();
 
 	void updateAndRender(const Graphics& aGraphics, float aDeltaTime);
+
 	void setController(Controller* aController);
+	void setGpuProfiler(GPUProfiler* aGpuProfiler);
 
 private:
 	void update(const Graphics& aGraphics, float aDeltaTime);
@@ -47,5 +50,6 @@ private:
 	bool profilerOpen{ false };
 
 	Profiler* profiler;
+	GPUProfiler* gpuProfiler;
 };
 
