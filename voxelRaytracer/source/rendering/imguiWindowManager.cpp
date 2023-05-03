@@ -71,8 +71,39 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 			profiler->stopProfiling();
 		}
 
-		Text("average FPS: %.3f", profiler->accumulatedProflingFrames / profiler->accumulatedProflingTime);
-		Text("frame count: %i", profiler->accumulatedProflingFrames);
+		//fps
+		if (profiler->profileValues.count("GameLoop"))
+		{
+			ProfileValue* myValue = profiler->profileValues["GameLoop"];
+
+			float myTotalFramesSeconds = myValue->totalValue / 1000.f;
+
+			float averageFPS = profiler->accumulatedProflingFrames / myTotalFramesSeconds;
+
+			Text("Average FPS: %.3f", averageFPS);
+
+			double myRaysPerSecond = averageFPS * 1920 * 1080;
+
+			Text("Rays per second: %.3f Million", myRaysPerSecond / 1000000.f);
+		}
+
+		Text(""); // blank line
+
+		//frame count
+		Text("Frame count: %i", profiler->accumulatedProflingFrames);
+
+		////rays per second
+		//if (profiler->profileValues.count("main ray"))
+		//{
+		//	ProfileValue* myValue = profiler->profileValues["main ray"];
+
+		//	float myRenderTime = myValue->values[profiler->currentTimestep - 1];
+		//	float myRaysPerSecond = ((1000.f / myRenderTime) * (1920 * 1080)) / 1000000.f;
+
+		//
+		//}
+
+		Text(""); // blank line
 
 		plotProfilingData();
 
@@ -102,7 +133,7 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 
 		SameLine();
 
-		if (Button("record banchmark"))
+		if (Button("record benchmark"))
 		{
 			benchmarkRecordingWindowOpen = true;
 			benchmarkManager->startBenchmarkRecording();
@@ -254,8 +285,13 @@ void ImguiWindowManager::update(const Graphics& aGraphics, float aDeltaTime)
 	//frame accumulator
 	framesAccumulated = aGraphics.accumulationConstantBuffer->framesAccumulated;
 
-
 	//profiling varaibles
+	profiler->updateProfileValue("GameLoop", aDeltaTime * 1000.f);
+	for (const auto& item : gpuProfiler->GetProfilerResults())
+	{
+		profiler->updateProfileValue(item.name, item.timeMS);
+	}
+
 	profiler->update(aDeltaTime);
 
 	//update benchmark manager
@@ -268,7 +304,14 @@ void ImguiWindowManager::plotProfilingData()
 	{
 		SetupAxes("Time (seconds)", "Frame Time (MS)");
 		SetupAxesLimits(0, 30, 0, 50);
-		PlotLine("Total Render Time", profiler->timeArray, profiler->averageFrameTimeArray, profiler->currentTimestep);
+
+		//PlotLine("GameLoop", profiler->timeArray, profiler->averageFrameTimeArray, profiler->currentTimestep);
+		
+		for (const auto& item : profiler->profileValues)
+		{
+			PlotLine(item.first.c_str(), profiler->timeArray, item.second->values, profiler->currentTimestep);
+		}
+		
 		SetNextMarkerStyle(ImPlotMarker_Circle);
 		EndPlot();
 	}
