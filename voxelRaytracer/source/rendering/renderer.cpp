@@ -13,12 +13,14 @@ Renderer::Renderer()
 {
 	graphics = new Graphics();
 	cameraController = new Controller();
+	voxelAtlas = new VoxelAtlas();
 }
 
 Renderer::~Renderer()
 {
 	delete graphics;
 	delete cameraController;
+	delete voxelAtlas;
 }
 
 void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
@@ -65,6 +67,21 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	voxelGrid->insertItem(63, 0 , 63, myItem2);
 	voxelGrid->insertItem(0 , 63, 63, myItem2);
 	voxelGrid->insertItem(63, 63, 63, myItem2);*/
+
+	{
+		VoxelAtlasItem myItem;
+
+		myItem.color = glm::vec3(1, 0, 0);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0, 1, 0);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0, 0, 1);
+		voxelAtlas->addItem(myItem);
+	}
+
+	graphics->updateVoxelAtlasVariables(*voxelAtlas);
 
 	graphics->updateOctreeVariables(*octree);
 	graphics->updateVoxelGridVariables(*voxelGrid);

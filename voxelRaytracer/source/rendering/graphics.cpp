@@ -193,6 +193,10 @@ void Graphics::renderFrame()
             // voxel grid const buffer
             CD3DX12_GPU_DESCRIPTOR_HANDLE GridConstBufferDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 7, cbvSrvUavDescriptorSize);
             commandList->SetComputeRootDescriptorTable(8, GridConstBufferDescriptorHandle);
+
+            // voxel Atlas buffer
+            CD3DX12_GPU_DESCRIPTOR_HANDLE voxelAtlasDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 11, cbvSrvUavDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(9, voxelAtlasDescriptorHandle);
         }
         
         commandList->SetPipelineState(computePipelineState.Get());
@@ -424,12 +428,26 @@ void Graphics::updateVoxelGridVariables(const VoxelGrid& aGrid)
     }
 
     //update constant buffer
-    voxelGridConstantBuffer->sizeX = aGrid.getSizeX();
-    voxelGridConstantBuffer->sizeY = aGrid.getSizeY();
-    voxelGridConstantBuffer->sizeZ = aGrid.getSizeZ();
+    voxelGridConstantBuffer->voxelGridSize = glm::uvec4(aGrid.getSizeX(), aGrid.getSizeY(), aGrid.getSizeZ(), 0);
 
-    voxelGridConstantBuffer->layer1ChunkSize = layer1Size;
-    voxelGridConstantBuffer->layer2ChunkSize = layer2Size;
+    voxelGridConstantBuffer->topLevelChunkSize = voxelGridConstantBuffer->voxelGridSize / glm::uvec4(16);
+}
+
+void Graphics::updateVoxelAtlasVariables(const VoxelAtlas& aAtlas)
+{
+    // Get a pointer to the mapped data
+    void* mappedData;
+
+    CD3DX12_RANGE readRange(0, 0);
+    ThrowIfFailed(voxelAtlasBuffer->Map(0, &readRange, &mappedData));
+
+    size_t test = aAtlas.getItemCount() * sizeof(VoxelAtlasItem);
+
+    // Update the data
+    memcpy(mappedData, aAtlas.getItems(), test);
+
+    // Unmap the buffer
+    voxelAtlasBuffer->Unmap(0, &readRange);
 }
 
 GPUProfiler* Graphics::getProfiler() const
@@ -527,7 +545,7 @@ bool Graphics::loadPipeline()
         &mySwapChain
     ));
 
-    // This sample does not support fullscreen transitions.
+    // Does not support fullscreen transitions.
     ThrowIfFailed(factory->MakeWindowAssociation(Window::getHwnd(), DXGI_MWA_NO_ALT_ENTER));
 
     ThrowIfFailed(mySwapChain.As(&swapChain));
@@ -546,7 +564,7 @@ bool Graphics::loadPipeline()
 
         // Describe and create a Unordered Access View (UAV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 11;
+        srvHeapDesc.NumDescriptors = 12;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&cbvSrvUavHeap)));
@@ -745,7 +763,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
 
             D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
             // max chunks for 128x128x128 scene
-            myAllocationInfo.SizeInBytes = 2097152 * sizeof(int);
+            myAllocationInfo.SizeInBytes = 512 * sizeof(int);
             myAllocationInfo.Alignment = 0;
 
             const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
@@ -765,7 +783,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
             myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
             myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            myOctreeDataDesc.Buffer.NumElements = 2097152;
+            myOctreeDataDesc.Buffer.NumElements = 512;
             myOctreeDataDesc.Buffer.StructureByteStride = sizeof(int);
 
             CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 8, cbvSrvUavDescriptorSize);
@@ -840,14 +858,47 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
 
     }
 
+    //voxel atlas buffer
+    {
+        auto heapUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+        D3D12_RESOURCE_ALLOCATION_INFO myAllocationInfo;
+        // max chunks for 128x128x128 scene
+        myAllocationInfo.SizeInBytes = 255 * sizeof(VoxelAtlasItem);
+        myAllocationInfo.Alignment = 0;
+
+        const D3D12_RESOURCE_DESC myBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(myAllocationInfo);
+
+        ThrowIfFailed(
+            device->CreateCommittedResource(
+                &heapUpload,
+                D3D12_HEAP_FLAG_NONE,
+                &myBufferDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(voxelAtlasBuffer.ReleaseAndGetAddressOf())));
+
+        voxelAtlasBuffer->SetName(L"voxelAtlasBuffer");
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC myOctreeDataDesc = {};
+        myOctreeDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        myOctreeDataDesc.Format = DXGI_FORMAT_UNKNOWN;
+        myOctreeDataDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        myOctreeDataDesc.Buffer.NumElements = 255;
+        myOctreeDataDesc.Buffer.StructureByteStride = sizeof(VoxelAtlasItem);
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 11, cbvSrvUavDescriptorSize);
+        device->CreateShaderResourceView(voxelAtlasBuffer.Get(), &myOctreeDataDesc, srvHandle);
+    }
+
     // use for debugging shader
-    //UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     
     // use for checking assembly
     //UINT compileFlags = D3DCOMPILE_DEBUG;
 
     // use for profiling
-    UINT compileFlags = NULL;
+    //UINT compileFlags = NULL;
 
     //D3D_SHADER_MACRO macros[] = { "TEST", "1", NULL, NULL };
     D3D_SHADER_MACRO macros[] = { "MAX_STACK_SIZE", "7", NULL, NULL};
@@ -861,7 +912,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
-    CD3DX12_DESCRIPTOR_RANGE1 myRanges[9];
+    CD3DX12_DESCRIPTOR_RANGE1 myRanges[10];
     myRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
@@ -873,8 +924,9 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     myRanges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
     myRanges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
     myRanges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);
+    myRanges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
 
-    CD3DX12_ROOT_PARAMETER1 myRootParameters[9];
+    CD3DX12_ROOT_PARAMETER1 myRootParameters[10];
     myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL); // camera const buffer
     myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL); // output texture
     myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL); // noise texture
@@ -886,6 +938,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     myRootParameters[6].InitAsDescriptorTable(1, &myRanges[6], D3D12_SHADER_VISIBILITY_ALL); // voxel grid layer 1 buffer
     myRootParameters[7].InitAsDescriptorTable(1, &myRanges[7], D3D12_SHADER_VISIBILITY_ALL); // voxel grid layer 2 buffer
     myRootParameters[8].InitAsDescriptorTable(1, &myRanges[8], D3D12_SHADER_VISIBILITY_ALL); // voxel grid const buffer
+    myRootParameters[9].InitAsDescriptorTable(1, &myRanges[9], D3D12_SHADER_VISIBILITY_ALL); // voxel atlas buffer
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
@@ -908,6 +961,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     rootSignatureDesc.Init_1_1(_countof(myRootParameters), myRootParameters, 0, nullptr, rootSignatureFlags);
 
     ComPtr<ID3DBlob> signature;
+
     ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &globalErrorBlob));
     ThrowIfFailed(device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&computeRootSignature)));
 

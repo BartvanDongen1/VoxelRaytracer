@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "rendering\octree.h"
 #include "rendering\voxelGrid.h"
+#include "rendering\voxelAtlas.h"
 #include "engine\texture.h"
 #include "gpuProfiler.h"
 
@@ -69,14 +70,11 @@ static_assert(modulatedSize3 == 0);
 
 struct VoxelGridBuffer
 {
-	int sizeX;
-	int sizeY;
-	int sizeZ;
+	glm::uvec4 voxelGridSize;
 
-	int layer1ChunkSize;
-	int layer2ChunkSize;
+	glm::uvec4 topLevelChunkSize;
 
-	float padding[59];
+	float padding[56];
 };
 
 constexpr size_t modulatedSize4 = sizeof(VoxelGridBuffer) % 256;
@@ -105,6 +103,8 @@ public:
 	void updateNoiseTexture(const Texture& aTexture);
 	void updateOctreeVariables(const Octree& aOctree);
 	void updateVoxelGridVariables(const VoxelGrid& aGrid);
+
+	void updateVoxelAtlasVariables(const VoxelAtlas& aAtlas);
 
 	GPUProfiler* getProfiler() const;
 
@@ -168,6 +168,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridTopLevelBuffer;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridLayer1Buffer;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridLayer2Buffer;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelAtlasBuffer;
 
 	int threadGroupX;
 	int threadGroupY;

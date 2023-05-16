@@ -7,17 +7,15 @@
 constexpr int layer1Size = 4;
 constexpr int layer2Size = 4;
 
-//16 btyes
-struct GridItem
-{
-	float filled{ -1.f };
-	glm::vec3 color{ 0.f, 0.f, 0.f };
-};
 
-// 4x4x4 voxel chunk 1kb
+
+// grid item
+// 8 bit index to atlas (0 == not filled)
+
+// 4x4x4 voxel chunk 64 bytes
 struct Layer2Chunk
 {
-	GridItem items[layer1Size * layer1Size * layer1Size];
+	int items[layer1Size * layer1Size];
 };
 
 // consists of 4x4x4 chunks of chunks 
@@ -39,7 +37,7 @@ public:
 
 	void clear();
 
-	void insertItem(const unsigned int aX, const unsigned int aY, const unsigned int aZ, GridItem aItem);
+	void insertItem(const unsigned int aX, const unsigned int aY, const unsigned int aZ, int aItemIndex);
 
 	size_t getGridSize() const;
 	const void* getGridData() const;

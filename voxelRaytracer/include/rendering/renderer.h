@@ -2,6 +2,7 @@
 #include "rendering\octree.h"
 #include "rendering\voxelGrid.h"
 #include "rendering\imguiWindowManager.h"
+#include "rendering\voxelAtlas.h"
 
 class Graphics;
 class Window;
@@ -22,6 +23,8 @@ private:
 	Graphics* graphics;
 	
 	VoxelModel* scene{ nullptr };
+
+	VoxelAtlas* voxelAtlas{ nullptr };
 
 	Controller* cameraController;
 	Camera* camera{ nullptr };

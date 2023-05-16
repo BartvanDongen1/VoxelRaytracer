@@ -116,6 +116,7 @@
     <ClCompile Include="source\engine\voxelModelLoader.cpp" />
     <ClCompile Include="source\engine\texture.cpp" />
     <ClCompile Include="source\rendering\voxelGrid.cpp" />
+    <ClCompile Include="source\rendering\voxelAtlas.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\rendering\gpuProfiler.h" />
@@ -149,6 +150,7 @@
     <ClInclude Include="include\engine\voxelModelLoader.h" />
     <ClInclude Include="include\engine\texture.h" />
     <ClInclude Include="include\rendering\voxelGrid.h" />
+    <ClInclude Include="include\rendering\voxelAtlas.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

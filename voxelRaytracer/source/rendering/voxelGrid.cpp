@@ -36,10 +36,9 @@ void VoxelGrid::init(VoxelModel* aModel)
 
 			assert(myX < aModel->sizeX&& myY < aModel->sizeY&& myZ < aModel->sizeZ);
 
-			GridItem myItem;
-			myItem.color = glm::vec3(1, 1, 1);
+			int myIndex = (rand() % 3) + 1;
 
-			insertItem(myX, myY, myZ, myItem);
+			insertItem(myX, myY, myZ, myIndex);
 		}
 	}
 
@@ -58,7 +57,7 @@ void VoxelGrid::clear()
 	layer2Chunks.clear();
 }
 
-void VoxelGrid::insertItem(const unsigned int aX, const unsigned int aY, const unsigned int aZ, GridItem aItem)
+void VoxelGrid::insertItem(const unsigned int aX, const unsigned int aY, const unsigned int aZ, int aItemIndex)
 {
 	// get layer 1 xyz and index
 	const uint32_t myLayer1ChunkX = aX / (layer1Size * layer2Size);
@@ -100,12 +99,15 @@ void VoxelGrid::insertItem(const unsigned int aX, const unsigned int aY, const u
 	const uint32_t myY = (aY % (layer1Size * layer2Size)) % layer1Size;
 	const uint32_t myZ = (aZ % (layer1Size * layer2Size)) % layer1Size;
 
-	const uint32_t myItemIndex = myX + (myY * layer2Size) + (myZ * layer2Size * layer2Size);
+	const uint32_t myItemIndex = myY + (myZ * layer2Size);
 
-	assert(myItemIndex < layer2Size* layer2Size* layer2Size);
+	assert(myItemIndex < layer2Size * layer2Size * layer2Size);
 
-	aItem.filled = 1.f;
-	mychunk.items[myItemIndex] = aItem;
+	int myBitsFlag = (0xFF << (myX * 8));
+
+	int myOffsetItemIndex = (aItemIndex & 0xFF) << (myX * 8);
+
+	mychunk.items[myItemIndex] = ((~myBitsFlag) & mychunk.items[myItemIndex]) + myOffsetItemIndex;
 
 	/*const uint32_t myChunkIndex = myChunkX + (myChunkY * layer1CountX) + (myChunkZ * layer1CountX * layer1CountY);
 
@@ -143,7 +145,7 @@ const void* VoxelGrid::getGridData() const
 
 const void* VoxelGrid::getLayer1ChunkData() const
 {
-	assert(layer1Chunks.size() > 0); //can't use empty octree
+	assert(layer1Chunks.size() > 0); //can't use empty voxel grid
 
 	return &layer1Chunks[0];
 }
@@ -155,7 +157,7 @@ size_t VoxelGrid::getLayer1ChunkDataSize() const
 
 const void* VoxelGrid::getLayer2ChunkData() const
 {
-	assert(layer2Chunks.size() > 0); //can't use empty octree
+	assert(layer2Chunks.size() > 0); //can't use empty voxel grid
 
 	return &layer2Chunks[0];
 }
