@@ -154,7 +154,7 @@ void voxelizeMesh(const char* aFileName, int aResolution)
         int myVoxelY = static_cast<int>((myNormalizedPosition.y - 0.001f) * aResolution);
         int myVoxelZ = static_cast<int>((myNormalizedPosition.z - 0.001f) * aResolution);
 
-        myVoxelModel.setVoxel(myVoxelX, myVoxelY, myVoxelZ, 1);
+        myVoxelModel.setVoxel(myVoxelX, myVoxelY, myVoxelZ, 2);
     }
 
     voxelizedModels.insert({ { aFileName, aResolution }, myVoxelModel });

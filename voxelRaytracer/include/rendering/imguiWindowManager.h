@@ -13,6 +13,8 @@ public:
 	ImguiWindowManager();
 	~ImguiWindowManager();
 
+	void setWindowResolution(unsigned int aSizeX, unsigned int aSizeY);
+
 	void updateAndRender(const Graphics& aGraphics, float aDeltaTime);
 
 	void setController(Controller* aController);
@@ -51,5 +53,8 @@ private:
 
 	Profiler* profiler;
 	GPUProfiler* gpuProfiler;
+
+	unsigned int sizeX;
+	unsigned int sizeY;
 };
 

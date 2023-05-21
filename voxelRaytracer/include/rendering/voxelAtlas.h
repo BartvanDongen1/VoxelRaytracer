@@ -6,6 +6,8 @@ struct VoxelAtlasItem
 {
 	glm::vec3 color;
 	float padding;
+
+	int isLight{ 0 };
 };
 
 class VoxelAtlas

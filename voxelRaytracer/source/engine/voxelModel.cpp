@@ -41,7 +41,7 @@ void VoxelModel::setVoxel(int aX, int aY, int aZ, uint32_t aValue)
 	data[aX + aY * sizeX + aZ * sizeX * sizeY] = aValue;
 }
 
-void initRandomVoxels(VoxelModel* aModel, int aFillAmount)
+void initRandomVoxels(VoxelModel* aModel, int aVoxelIndex, int aFillAmount)
 {
 	for (int i = 0; i < aModel->sizeX * aModel->sizeY * aModel->sizeZ; i++)
 	{
@@ -49,40 +49,7 @@ void initRandomVoxels(VoxelModel* aModel, int aFillAmount)
 
 		if (!myFilled)
 		{
-			int randomVoxelType = rand() % 100;
-
-			if (randomVoxelType < 10)
-			{
-				//lights
-				if ((randomVoxelType % 2) == 1)
-				{
-					//yellow light
-					aModel->data[i] = 1;
-					continue;
-				}
-				else
-				{
-					//magenta light
-					aModel->data[i] = 2;
-					continue;
-				}
-
-
-			}
-
-			if (randomVoxelType < 20)
-			{
-				//reflections
-				aModel->data[i] = 3;
-				continue;
-			}
-
-			if (randomVoxelType < 100)
-			{
-				//diffuse
-				aModel->data[i] = 4;
-				continue;
-			}
+			aModel->data[i] = aVoxelIndex;
 		}
 	}
 }

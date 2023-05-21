@@ -52,6 +52,8 @@ struct AtlasItem
 {
     float3 color;
     float padding;
+    
+    int isLight;
 };
 
 StructuredBuffer<AtlasItem> voxelAtlas : register(t5);
@@ -107,7 +109,7 @@ HitResult hitResultDefault()
     return result;
 }
 
-//RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
+RayStruct generateDiffuseRay(float3 hitPoint, float3 hitNormal, inout RandomState rs);
 
 HitResult traverseRay(RayStruct aRay);
 
@@ -126,36 +128,63 @@ RandomState initialize(int2 aDTid, int aFrameSeed);
 
 float3 randomInUnitSphere(float3 r);
 
+#define RAY_BOUNCES 2
+
 [numthreads(8, 4, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
     const float2 WindowLocal = ((float2) DTid.xy / maxThreadIter.xy);
-    //const RandomState rs = initialize(DTid.xy, frameSeed);
     
-    //const RayStruct myRay = createRayAA(WindowLocal, maxThreadIter.xy, rs);
-    const RayStruct myRay = createRay(WindowLocal);
+    RandomState rs = initialize(DTid.xy, frameSeed);
+    RayStruct myRay = createRayAA(WindowLocal, maxThreadIter.xy, rs);
     
-    const HitResult result = traverseRay(myRay);
-
-    if (result.hitDistance != FLOAT_MAX)
+    float3 myOutColor = float3(1, 1, 1);
+    
+    bool hitLight = false;
+    for (int i = 0; (i < RAY_BOUNCES) && !hitLight; i++)
     {
-        const AtlasItem myItem = voxelAtlas[result.itemIndex - 1];
+        const HitResult result = traverseRay(myRay);
         
-        const float brightness = (result.hitDistance / 200.f);
-        //OutputTexture[DTid.xy] += float4(brightness, brightness, brightness, 1);
-        OutputTexture[DTid.xy] += float4(myItem.color, 1);
+        if (result.hitDistance != FLOAT_MAX && !(result.hitNormal.x == 0 && result.hitNormal.y == 0 && result.hitNormal.z == 0))
+        {
+            //hit voxel
+
+            //OutputTexture[DTid.xy] += float4(result.hitNormal, 1);
+            //return;
+            
+            const AtlasItem myItem = voxelAtlas[result.itemIndex - 1];
+            
+            myOutColor *= myItem.color;
+            
+            //check if light
+            if (myItem.isLight)
+            {
+                hitLight = true;
+                continue;
+            }
+            
+            float3 myHitPoint = myRay.origin + myRay.direction * result.hitDistance;
+            myRay = generateDiffuseRay(myHitPoint, result.hitNormal, rs);
+        }
+        else
+        {
+            //hit nothing
+            OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
+            return;
+        }
     }
-    else
-    {
-        OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
-    }
+    
+    OutputTexture[DTid.xy] += float4(myOutColor, 1) * (int) hitLight;
 }
+
+struct AABBResult
+{
+    float2 intersectDists;
+    float3 intersectNormal;
+};
 
 float2 intersectAABB(const RayStruct aRay, const float3 boxMin, const float3 boxMax)
 {
-    //float3 tMin = (boxMin - aRay.origin) * aRay.invDirection;
-    //float3 tMax = (boxMax - aRay.origin) * aRay.invDirection;
-    
     const float3 tMin = (boxMin - aRay.origin) / aRay.direction;
     const float3 tMax = (boxMax - aRay.origin) / aRay.direction;
     
@@ -185,12 +214,13 @@ HitResult traverseRay(RayStruct aRay)
     
     if (result.x < result.y && result.y > 0)
     {
-        const float RayOriginOffset = max(result.x + 0.01f, 0.f);
+        const float RayOriginOffset = max(result.x + 0.0001f, 0.f);
         const float3 intersectPos = aRay.origin + aRay.direction * RayOriginOffset;
         
         aRay.origin = intersectPos;
         
         HitResult hit = traverseTopLevel(aRay);
+
         hit.hitDistance += RayOriginOffset;
         return hit;
     }
@@ -206,6 +236,10 @@ HitResult traverseRay(RayStruct aRay)
 // 3 bits for y index
 // 3 bits for x index
 
+// 1 bit for normal z
+// 1 bit for normal y
+// 1 bit for normal x
+
 // 2 bits for dir Z
 // 2 bits for dir Y
 // 2 bits for dir X
@@ -214,23 +248,32 @@ HitResult traverseRay(RayStruct aRay)
 #define GET_DIR_Y(value) ((value >> 2) & 0x3) 
 #define GET_DIR_Z(value) ((value >> 4) & 0x3) 
 
-#define GET_INDEX_X(value) ((value >> 6) & 0x7) 
-#define GET_INDEX_Y(value) ((value >> 9) & 0x7)  
-#define GET_INDEX_Z(value) ((value >> 12) & 0x7) 
+#define GET_NORMAL_X(value) ((value >> 6) & 0x1) 
+#define GET_NORMAL_Y(value) ((value >> 7) & 0x1)  
+#define GET_NORMAL_Z(value) ((value >> 8) & 0x1) 
+
+#define GET_INDEX_X(value) ((value >> 9) & 0x7) 
+#define GET_INDEX_Y(value) ((value >> 12) & 0x7)  
+#define GET_INDEX_Z(value) ((value >> 15) & 0x7) 
 
 #define OFFSET_DIR_X(value) (value & 0x3) 
 #define OFFSET_DIR_Y(value) ((value & 0x3) << 2) 
 #define OFFSET_DIR_Z(value) ((value & 0x3) << 4) 
 
-#define OFFSET_INDEX_X(value) ((value & 0x7) << 6)
-#define OFFSET_INDEX_Y(value) ((value & 0x7) << 9)  
-#define OFFSET_INDEX_Z(value) ((value & 0x7) << 12) 
+#define OFFSET_NORMAL_X(value) ((value & 0x1) << 6)
+#define OFFSET_NORMAL_Y(value) ((value & 0x1) << 7)  
+#define OFFSET_NORMAL_Z(value) ((value & 0x1) << 8) 
 
-#define INDEX_FLAG(value) (value & (0x1FF << 6)) 
+#define OFFSET_INDEX_X(value) ((value & 0x7) << 9)
+#define OFFSET_INDEX_Y(value) ((value & 0x7) << 12)  
+#define OFFSET_INDEX_Z(value) ((value & 0x7) << 15) 
+
+#define INDEX_FLAG(value) (value & (0x1FF << 9)) 
+#define NORMAL_FLAG(value) (value & (0x7 << 6)) 
 #define DIR_FLAG(value) (value & 0x3F) 
 
-#define LEVEL2_EXIT_FLAG 0x00004900
-#define LEVEL1_EXIT_FLAG 0x00004900
+#define LEVEL2_EXIT_FLAG 0x00024800
+#define LEVEL1_EXIT_FLAG 0x00024800
 
 int sampleTopLevelGrid(const int aX, const int aY, const int aZ)
 {
@@ -250,15 +293,15 @@ int sampleLevel2Grid(const int aIndex, const int aX, const int aY, const int aZ)
 }
 
 //top level defines
-#define GET_TOP_INDEX_X(value) ((value >> 6) & 0xFF) 
-#define GET_TOP_INDEX_Y(value) ((value >> 14) & 0xFF)  
-#define GET_TOP_INDEX_Z(value) ((value >> 22) & 0xFF) 
+#define GET_TOP_INDEX_X(value) ((value >> 9) & 0x3F) 
+#define GET_TOP_INDEX_Y(value) ((value >> 15) & 0x3F)  
+#define GET_TOP_INDEX_Z(value) ((value >> 21) & 0x3F) 
 
-#define OFFSET_TOP_INDEX_X(value) ((value & 0xFF) << 6)
-#define OFFSET_TOP_INDEX_Y(value) ((value & 0xFF) << 14)  
-#define OFFSET_TOP_INDEX_Z(value) ((value & 0xFF) << 22) 
+#define OFFSET_TOP_INDEX_X(value) ((value & 0x3F) << 9)
+#define OFFSET_TOP_INDEX_Y(value) ((value & 0x3F) << 15)  
+#define OFFSET_TOP_INDEX_Z(value) ((value & 0x3F) << 21) 
 
-#define IS_INDEX_NEGATIVE(value) (!((value & 0xFF) ^ 0xFF))
+#define IS_INDEX_NEGATIVE(value) (!((value & 0x3F) ^ 0x3F))
 
 #define TOP_INDEX_FLAG(value) (value & (0xFFFFFF << 6)) 
 
@@ -271,18 +314,21 @@ HitResult traverseTopLevel(const RayStruct aRay)
     //data
     int data = OFFSET_TOP_INDEX_X(currentIndex.x) + OFFSET_TOP_INDEX_Y(currentIndex.y) + OFFSET_TOP_INDEX_Z(currentIndex.z);
     
-    
     // 1 int
     // {
-    // 8 bits index X
-    // 8 bits index Y
-    // 8 bits index Z
+    
+    // 6 bits index X
+    // 6 bits index Y
+    // 6 bits index Z
+    
+    // 1 bit normal X
+    // 1 bit normal Y
+    // 1 bit normal Z
     
     // 2 bits dir X
     // 2 bits dir Y
     // 2 bits dir Z
     // }
-    
 
     float3 tMax = float3(0, 0, 0);
     
@@ -325,7 +371,7 @@ HitResult traverseTopLevel(const RayStruct aRay)
         if (myIndex != -1)
         {
             RayStruct myRay;
-            myRay.origin = aRay.origin + aRay.direction * (distance + 0.01f);
+            myRay.origin = aRay.origin + aRay.direction * (distance + 0.0001f);
             myRay.direction = aRay.direction;
             myRay.rayDelta = aRay.rayDelta;
             
@@ -350,7 +396,11 @@ HitResult traverseTopLevel(const RayStruct aRay)
             
             tMax.x = tMax.x + scaledDelta.x * stepDir;
        
-            data = DIR_FLAG(data) + OFFSET_TOP_INDEX_X(GET_TOP_INDEX_X(data) + stepDir) + OFFSET_TOP_INDEX_Y(GET_TOP_INDEX_Y(data)) + OFFSET_TOP_INDEX_Z(GET_TOP_INDEX_Z(data));
+            data = DIR_FLAG(data) + 
+                    OFFSET_TOP_INDEX_X(GET_TOP_INDEX_X(data) + stepDir) + 
+                    OFFSET_TOP_INDEX_Y(GET_TOP_INDEX_Y(data)) + 
+                    OFFSET_TOP_INDEX_Z(GET_TOP_INDEX_Z(data)) +
+                    OFFSET_NORMAL_X(1);
 
         }
         else if (distance == tMax.y)
@@ -360,7 +410,11 @@ HitResult traverseTopLevel(const RayStruct aRay)
             
             tMax.y = tMax.y + scaledDelta.y * stepDir;
 
-            data = DIR_FLAG(data) + OFFSET_TOP_INDEX_X(GET_TOP_INDEX_X(data)) + OFFSET_TOP_INDEX_Y(GET_TOP_INDEX_Y(data) + stepDir) + OFFSET_TOP_INDEX_Z(GET_TOP_INDEX_Z(data));
+            data = DIR_FLAG(data) + 
+                    OFFSET_TOP_INDEX_X(GET_TOP_INDEX_X(data)) + 
+                    OFFSET_TOP_INDEX_Y(GET_TOP_INDEX_Y(data) + stepDir) + 
+                    OFFSET_TOP_INDEX_Z(GET_TOP_INDEX_Z(data)) +
+                    OFFSET_NORMAL_Y(1);
         }
         else //(distance == tMax.z)
         {
@@ -369,7 +423,11 @@ HitResult traverseTopLevel(const RayStruct aRay)
             
             tMax.z = tMax.z + scaledDelta.z * stepDir;
             
-            data = DIR_FLAG(data) + OFFSET_TOP_INDEX_X(GET_TOP_INDEX_X(data)) + OFFSET_TOP_INDEX_Y(GET_TOP_INDEX_Y(data)) + OFFSET_TOP_INDEX_Z(GET_TOP_INDEX_Z(data) + stepDir);
+            data = DIR_FLAG(data) + 
+                    OFFSET_TOP_INDEX_X(GET_TOP_INDEX_X(data)) + 
+                    OFFSET_TOP_INDEX_Y(GET_TOP_INDEX_Y(data)) + 
+                    OFFSET_TOP_INDEX_Z(GET_TOP_INDEX_Z(data) + stepDir) +
+                    OFFSET_NORMAL_Z(1);
         }
     }
     
@@ -382,7 +440,7 @@ chunkTraverseResult traverseLevel1(const RayStruct aRay, const int3 aMinBounds, 
     const float3 scaledDelta = CHUNK_SIZE_2 / aRay.direction;
 
     const int3 currentIndex = floor((aRay.origin - aMinBounds) / CHUNK_SIZE_2);
-    aData = DIR_FLAG(aData) + OFFSET_INDEX_X(currentIndex.x) + OFFSET_INDEX_Y(currentIndex.y) + OFFSET_INDEX_Z(currentIndex.z);
+    aData = DIR_FLAG(aData) + NORMAL_FLAG(aData) + OFFSET_INDEX_X(currentIndex.x) + OFFSET_INDEX_Y(currentIndex.y) + OFFSET_INDEX_Z(currentIndex.z);
     
     //get x dist    
     float3 tMax = float3(0, 0, 0);
@@ -421,7 +479,7 @@ chunkTraverseResult traverseLevel1(const RayStruct aRay, const int3 aMinBounds, 
         if (myIndex != -1)
         {
             RayStruct myRay;
-            myRay.origin = aRay.origin + aRay.direction * (distance + 0.01f);
+            myRay.origin = aRay.origin + aRay.direction * (distance + 0.0001f);
             myRay.direction = aRay.direction;
             myRay.rayDelta = aRay.rayDelta;
             
@@ -449,7 +507,11 @@ chunkTraverseResult traverseLevel1(const RayStruct aRay, const int3 aMinBounds, 
             
             tMax.x = tMax.x + scaledDelta.x * stepDir;
          
-            aData = DIR_FLAG(aData) + OFFSET_INDEX_X(GET_INDEX_X(aData) + stepDir) + OFFSET_INDEX_Y(GET_INDEX_Y(aData)) + OFFSET_INDEX_Z(GET_INDEX_Z(aData));
+            aData = DIR_FLAG(aData) +
+                    OFFSET_INDEX_X(GET_INDEX_X(aData) + stepDir) +
+                    OFFSET_INDEX_Y(GET_INDEX_Y(aData)) +
+                    OFFSET_INDEX_Z(GET_INDEX_Z(aData))
+                    + OFFSET_NORMAL_X(1);
         }
         else if (distance == tMax.y)
         {
@@ -458,7 +520,11 @@ chunkTraverseResult traverseLevel1(const RayStruct aRay, const int3 aMinBounds, 
             
             tMax.y = tMax.y + scaledDelta.y * stepDir;
             
-            aData = DIR_FLAG(aData) + OFFSET_INDEX_X(GET_INDEX_X(aData)) + OFFSET_INDEX_Y(GET_INDEX_Y(aData) + stepDir) + OFFSET_INDEX_Z(GET_INDEX_Z(aData));
+            aData = DIR_FLAG(aData) +
+                    OFFSET_INDEX_X(GET_INDEX_X(aData)) +
+                    OFFSET_INDEX_Y(GET_INDEX_Y(aData) + stepDir) +
+                    OFFSET_INDEX_Z(GET_INDEX_Z(aData))
+                    + OFFSET_NORMAL_Y(1);
         }
         else //(distance == tMax.z)
         {
@@ -467,7 +533,11 @@ chunkTraverseResult traverseLevel1(const RayStruct aRay, const int3 aMinBounds, 
             
             tMax.z = tMax.z + scaledDelta.z * stepDir;
             
-            aData = DIR_FLAG(aData) + OFFSET_INDEX_X(GET_INDEX_X(aData)) + OFFSET_INDEX_Y(GET_INDEX_Y(aData)) + OFFSET_INDEX_Z(GET_INDEX_Z(aData) + stepDir);
+            aData = DIR_FLAG(aData) +
+                    OFFSET_INDEX_X(GET_INDEX_X(aData)) +
+                    OFFSET_INDEX_Y(GET_INDEX_Y(aData)) +
+                    OFFSET_INDEX_Z(GET_INDEX_Z(aData) + stepDir)
+                    + OFFSET_NORMAL_Z(1);
         }
     }
     
@@ -480,11 +550,10 @@ chunkTraverseResult traverseLevel1(const RayStruct aRay, const int3 aMinBounds, 
 chunkTraverseResult traverseLevel2(const RayStruct aRay, const int3 aMinBounds, const int aChunkIndex, int aData)
 {
     const float3 delta = 1.f / aRay.direction;
-    //float3 delta = aRay.invDirection;
     
     const int3 currentIndex = floor(aRay.origin - aMinBounds);
-    aData = DIR_FLAG(aData) + OFFSET_INDEX_X(currentIndex.x) + OFFSET_INDEX_Y(currentIndex.y) + OFFSET_INDEX_Z(currentIndex.z);
-    
+    aData = DIR_FLAG(aData) + NORMAL_FLAG(aData) + OFFSET_INDEX_X(currentIndex.x) + OFFSET_INDEX_Y(currentIndex.y) + OFFSET_INDEX_Z(currentIndex.z);
+       
     //get x dist    
     float3 tMax = float3(0, 0, 0);
     
@@ -520,6 +589,14 @@ chunkTraverseResult traverseLevel2(const RayStruct aRay, const int3 aMinBounds, 
             myResult.hit = hitResultDefault();
             myResult.hit.itemIndex = myIndex;
             myResult.hit.hitDistance = distance;
+            
+            const int stepDirX = (GET_DIR_X(aData) - 1);
+            const int stepDirY = (GET_DIR_Y(aData) - 1);
+            const int stepDirZ = (GET_DIR_Z(aData) - 1);
+            
+            myResult.hit.hitNormal = float3(GET_NORMAL_X(aData) * float(-stepDirX),
+                                            GET_NORMAL_Y(aData) * float(-stepDirY),
+                                            GET_NORMAL_Z(aData) * float(-stepDirZ));
             return myResult;
         }
 
@@ -532,7 +609,11 @@ chunkTraverseResult traverseLevel2(const RayStruct aRay, const int3 aMinBounds, 
             
             tMax.x = tMax.x + delta.x * stepDir;
             
-            aData = DIR_FLAG(aData) + OFFSET_INDEX_X(GET_INDEX_X(aData) + stepDir) + OFFSET_INDEX_Y(GET_INDEX_Y(aData)) + OFFSET_INDEX_Z(GET_INDEX_Z(aData));
+            aData = DIR_FLAG(aData) +
+                    OFFSET_INDEX_X(GET_INDEX_X(aData) + stepDir) +
+                    OFFSET_INDEX_Y(GET_INDEX_Y(aData)) +
+                    OFFSET_INDEX_Z(GET_INDEX_Z(aData))
+                    + OFFSET_NORMAL_X(1);
         }
         else if (distance == tMax.y)
         {
@@ -541,7 +622,11 @@ chunkTraverseResult traverseLevel2(const RayStruct aRay, const int3 aMinBounds, 
             
             tMax.y = tMax.y + delta.y * stepDir;
             
-            aData = DIR_FLAG(aData) + OFFSET_INDEX_X(GET_INDEX_X(aData)) + OFFSET_INDEX_Y(GET_INDEX_Y(aData) + stepDir) + OFFSET_INDEX_Z(GET_INDEX_Z(aData));
+            aData = DIR_FLAG(aData) +
+                    OFFSET_INDEX_X(GET_INDEX_X(aData)) +
+                    OFFSET_INDEX_Y(GET_INDEX_Y(aData) + stepDir) +
+                    OFFSET_INDEX_Z(GET_INDEX_Z(aData))
+                    + OFFSET_NORMAL_Y(1);
         }
         else //(distance == tMax.z)
         {
@@ -550,7 +635,11 @@ chunkTraverseResult traverseLevel2(const RayStruct aRay, const int3 aMinBounds, 
             
             tMax.z = tMax.z + delta.z * stepDir;
             
-            aData = DIR_FLAG(aData) + OFFSET_INDEX_X(GET_INDEX_X(aData)) + OFFSET_INDEX_Y(GET_INDEX_Y(aData)) + OFFSET_INDEX_Z(GET_INDEX_Z(aData) + stepDir);
+            aData = DIR_FLAG(aData) +
+                    OFFSET_INDEX_X(GET_INDEX_X(aData)) +
+                    OFFSET_INDEX_Y(GET_INDEX_Y(aData)) +
+                    OFFSET_INDEX_Z(GET_INDEX_Z(aData) + stepDir)
+                    + OFFSET_NORMAL_Z(1);
         }
     }
     
@@ -600,6 +689,23 @@ float3 reflectionRay(float3 aDirectionIn, float3 aNormal)
 {
     float3 reflectionRayDir = aDirectionIn - (aNormal * 2 * dot(aDirectionIn, aNormal));
     return normalize(reflectionRayDir);
+}
+
+RayStruct generateDiffuseRay(float3 hitPoint, float3 hitNormal, inout RandomState rs)
+{
+    RayStruct myRay;
+    
+    //diffusion
+    updateRandom(rs);
+    float3 random = random1(rs);
+    
+    float3 rayDirection = normalize(hitNormal + randomInUnitSphere(random));
+    
+    myRay.direction = rayDirection;
+    myRay.origin = hitPoint;
+    myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+    
+    return myRay;
 }
 
 int xorShift32(int aSeed)

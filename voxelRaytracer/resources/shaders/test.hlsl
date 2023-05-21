@@ -41,7 +41,7 @@ struct RandomState
     uint z3;
 };
 
-//RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
+RayStruct generateDiffuseRay(float3 hitPosition, float3 hitNormal, int aSeed);
 
 RayStruct createRay(float2 windowPos);
 RayStruct createRayAA(float2 aWindowPos, float2 aWindowSize, RandomState aRandomState);

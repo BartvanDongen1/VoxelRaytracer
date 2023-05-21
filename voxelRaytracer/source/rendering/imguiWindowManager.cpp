@@ -20,6 +20,12 @@ ImguiWindowManager::~ImguiWindowManager()
 	delete profiler;
 }
 
+void ImguiWindowManager::setWindowResolution(unsigned int aSizeX, unsigned int aSizeY)
+{
+	sizeX = aSizeX;
+	sizeY = aSizeY;
+}
+
 void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDeltaTime)
 {
 	update(aGraphics, aDeltaTime);
@@ -82,7 +88,7 @@ void ImguiWindowManager::updateAndRender(const Graphics& aGraphics, float aDelta
 
 			Text("Average FPS: %.3f", averageFPS);
 
-			double myRaysPerSecond = averageFPS * 1920 * 1080;
+			double myRaysPerSecond = averageFPS * sizeX * sizeY;
 
 			Text("Rays per second: %.3f Million", myRaysPerSecond / 1000000.f);
 		}

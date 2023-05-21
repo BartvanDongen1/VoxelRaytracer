@@ -20,6 +20,6 @@ struct VoxelModel
 	uint32_t* data{ nullptr };
 };
 
-void initRandomVoxels(VoxelModel* aModel, int aFillAmount = 10);
+void initRandomVoxels(VoxelModel* aModel, int aVoxelIndex, int aFillAmount = 10);
 
 void initFilled(VoxelModel* aModel);

@@ -45,7 +45,7 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	//initFilled(scene);
 
 	//initRandomVoxels(scene, 100);
-	//initRandomVoxels(scene, 500);
+	initRandomVoxels(scene, 1, 2000);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
@@ -71,13 +71,29 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	{
 		VoxelAtlasItem myItem;
 
-		myItem.color = glm::vec3(1, 0, 0);
-		voxelAtlas->addItem(myItem);
-
-		myItem.color = glm::vec3(0, 1, 0);
-		voxelAtlas->addItem(myItem);
-
 		myItem.color = glm::vec3(0, 0, 1);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0, 0.5, 0);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0, 0.5, 0.5);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0.5, 0, 0);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0.5, 0, 0.5);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0.5, 0.5, 0);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(0.5, 0.5, 0.5);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(20, 20, 20);
+		myItem.isLight = 1;
 		voxelAtlas->addItem(myItem);
 	}
 
@@ -114,7 +130,6 @@ void Renderer::update(float aDeltaTime)
 		cameraController->update(aDeltaTime);
 	}
 
-
 	graphics->updateCameraVariables(*camera, windowFocused, static_cast<int>(octree->getSize()));
 	graphics->updateAccumulationVariables(windowFocused || !cameraController->getInputsEnabled());
 
@@ -126,8 +141,9 @@ void Renderer::update(float aDeltaTime)
 
 	graphics->copyAccumulationBufferToBackbuffer();
 
-
 	//imgui
+	imguiWindow.setWindowResolution(Window::getWidth(), Window::getHeight());
+
 	imguiWindow.updateAndRender(*graphics, aDeltaTime); 
 	graphics->renderImGui();							
 	

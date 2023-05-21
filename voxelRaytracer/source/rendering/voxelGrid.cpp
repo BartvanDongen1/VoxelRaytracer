@@ -36,9 +36,16 @@ void VoxelGrid::init(VoxelModel* aModel)
 
 			assert(myX < aModel->sizeX&& myY < aModel->sizeY&& myZ < aModel->sizeZ);
 
-			int myIndex = (rand() % 3) + 1;
-
-			insertItem(myX, myY, myZ, myIndex);
+			if (myPointData == 1)
+			{
+				int myIndex = 8;
+				insertItem(myX, myY, myZ, myIndex);
+			}
+			else
+			{
+				int myIndex = (rand() % 7) + 1;
+				insertItem(myX, myY, myZ, myIndex);
+			}
 		}
 	}
 
