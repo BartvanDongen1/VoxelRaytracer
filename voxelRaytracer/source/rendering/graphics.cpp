@@ -148,7 +148,7 @@ void Graphics::renderFrame()
 {
     updateConstantBuffer();
 
-    ID3D12DescriptorHeap* pHeaps[] = { cbvSrvUavHeap.Get() };
+    ID3D12DescriptorHeap* pHeaps[] = { cbvSrvUavHeap.Get(), samplerHeap.Get() };
     commandList->SetDescriptorHeaps(_countof(pHeaps), pHeaps);
 
     profiler->BeginProfileScope(commandList.Get(), "main ray");
@@ -198,7 +198,18 @@ void Graphics::renderFrame()
             CD3DX12_GPU_DESCRIPTOR_HANDLE voxelAtlasDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 11, cbvSrvUavDescriptorSize);
             commandList->SetComputeRootDescriptorTable(9, voxelAtlasDescriptorHandle);
         }
-        
+
+        //skydome
+        {
+            //skydome texture
+            CD3DX12_GPU_DESCRIPTOR_HANDLE skydomeTextureDescriptorHandle(cbvSrvUavHeap->GetGPUDescriptorHandleForHeapStart(), 12, cbvSrvUavDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(10, skydomeTextureDescriptorHandle);
+
+            //skydome sampler
+            CD3DX12_GPU_DESCRIPTOR_HANDLE skydomeSamplerDescriptorHandle(samplerHeap->GetGPUDescriptorHandleForHeapStart(), 0, samplerDescriptorSize);
+            commandList->SetComputeRootDescriptorTable(11, skydomeSamplerDescriptorHandle);
+        }
+       
         commandList->SetPipelineState(computePipelineState.Get());
         commandList->Dispatch(threadGroupX, threadGroupY, 1);
     }
@@ -345,6 +356,54 @@ void Graphics::updateNoiseTexture(const Texture& aTexture)
 
     //transition back
     auto myResourceBarrierAfter = CD3DX12_RESOURCE_BARRIER::Transition(noiseTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &myResourceBarrierAfter);
+
+    ThrowIfFailed(commandList->Close());
+
+    // Execute the command list.
+    ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
+    commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    waitForGpu();
+}
+
+void Graphics::updateSkydomeTexture(const Texture& aTexture)
+{
+    assert(aTexture.textureWidth == 4096 && aTexture.textureHeight == 2048);
+
+    ThrowIfFailed(commandAllocators[frameIndex]->Reset());
+    ThrowIfFailed(commandList->Reset(commandAllocators[frameIndex].Get(), nullptr));
+
+    //transition texture
+    auto myResourceBarrierBefore = CD3DX12_RESOURCE_BARRIER::Transition(skydomeTexture.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
+    commandList->ResourceBarrier(1, &myResourceBarrierBefore);
+
+    //copy over data
+    ComPtr<ID3D12Resource> textureUploadHeap;
+
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(skydomeTexture.Get(), 0, 1);
+    auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+
+    auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+    // Create the GPU upload buffer.
+    ThrowIfFailed(device->CreateCommittedResource(
+        &uploadHeapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&textureUploadHeap)));
+
+    D3D12_SUBRESOURCE_DATA textureData = {};
+    textureData.pData = aTexture.textureData;
+    textureData.RowPitch = static_cast<long>(aTexture.textureWidth) * aTexture.bytesPerPixel;
+    textureData.SlicePitch = textureData.RowPitch * aTexture.textureHeight;
+
+    UpdateSubresources(commandList.Get(), skydomeTexture.Get(), textureUploadHeap.Get(), 0, 0, 1, &textureData);
+
+    //transition back
+    auto myResourceBarrierAfter = CD3DX12_RESOURCE_BARRIER::Transition(skydomeTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     commandList->ResourceBarrier(1, &myResourceBarrierAfter);
 
     ThrowIfFailed(commandList->Close());
@@ -564,12 +623,21 @@ bool Graphics::loadPipeline()
 
         // Describe and create a Unordered Access View (UAV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 12;
+        srvHeapDesc.NumDescriptors = 13;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&cbvSrvUavHeap)));
 
         cbvSrvUavDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+        // Describe and create a sampler descriptor heap.
+        D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
+        samplerHeapDesc.NumDescriptors = 1;
+        samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+        samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        ThrowIfFailed(device->CreateDescriptorHeap(&samplerHeapDesc, IID_PPV_ARGS(&samplerHeap)));
+
+        samplerDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
     }
 
     // Create frame resources.
@@ -891,6 +959,58 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
         device->CreateShaderResourceView(voxelAtlasBuffer.Get(), &myOctreeDataDesc, srvHandle);
     }
 
+    // create texture for sky dome
+    {
+        // Describe and create a Texture2D.
+        D3D12_RESOURCE_DESC textureDesc = {};
+        textureDesc.MipLevels = 1;
+        textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        textureDesc.Width = 4096;
+        textureDesc.Height = 2048;
+        textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+        textureDesc.DepthOrArraySize = 1;
+        textureDesc.SampleDesc.Count = 1;
+        textureDesc.SampleDesc.Quality = 0;
+        textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+        ThrowIfFailed(
+            device->CreateCommittedResource(
+                &myDefaultHeapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &textureDesc,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                nullptr,
+                IID_PPV_ARGS(skydomeTexture.ReleaseAndGetAddressOf())));
+        skydomeTexture->SetName(L"skydome");
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC mySceneDataDesc = {};
+        mySceneDataDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        mySceneDataDesc.Format = textureDesc.Format;
+        mySceneDataDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        mySceneDataDesc.Texture3D.MipLevels = 1;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(cbvSrvUavHeap->GetCPUDescriptorHandleForHeapStart(), 12, cbvSrvUavDescriptorSize);
+        device->CreateShaderResourceView(skydomeTexture.Get(), &mySceneDataDesc, srvHandle);
+    }
+
+    // create sampler for sky dome
+    {
+        D3D12_SAMPLER_DESC mySamplerDesc {};
+        mySamplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+        mySamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        mySamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        mySamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        mySamplerDesc.MipLODBias = 0.0f;
+        mySamplerDesc.MaxAnisotropy = 0;
+        mySamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS;
+        mySamplerDesc.BorderColor[0] = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+        mySamplerDesc.MinLOD = 0;
+        mySamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE samplerHandle(samplerHeap->GetCPUDescriptorHandleForHeapStart(), 0, samplerDescriptorSize);
+        device->CreateSampler(&mySamplerDesc, samplerHandle);
+    }
+
     // use for debugging shader
     //UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     
@@ -912,7 +1032,7 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 
-    CD3DX12_DESCRIPTOR_RANGE1 myRanges[10];
+    CD3DX12_DESCRIPTOR_RANGE1 myRanges[12];
     myRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
     myRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     myRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
@@ -926,7 +1046,10 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     myRanges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);
     myRanges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);
 
-    CD3DX12_ROOT_PARAMETER1 myRootParameters[10];
+    myRanges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6);
+    myRanges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+
+    CD3DX12_ROOT_PARAMETER1 myRootParameters[12];
     myRootParameters[0].InitAsDescriptorTable(1, &myRanges[0], D3D12_SHADER_VISIBILITY_ALL); // camera const buffer
     myRootParameters[1].InitAsDescriptorTable(1, &myRanges[1], D3D12_SHADER_VISIBILITY_ALL); // output texture
     myRootParameters[2].InitAsDescriptorTable(1, &myRanges[2], D3D12_SHADER_VISIBILITY_ALL); // noise texture
@@ -939,6 +1062,9 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     myRootParameters[7].InitAsDescriptorTable(1, &myRanges[7], D3D12_SHADER_VISIBILITY_ALL); // voxel grid layer 2 buffer
     myRootParameters[8].InitAsDescriptorTable(1, &myRanges[8], D3D12_SHADER_VISIBILITY_ALL); // voxel grid const buffer
     myRootParameters[9].InitAsDescriptorTable(1, &myRanges[9], D3D12_SHADER_VISIBILITY_ALL); // voxel atlas buffer
+
+    myRootParameters[10].InitAsDescriptorTable(1, &myRanges[10], D3D12_SHADER_VISIBILITY_ALL); // skydome
+    myRootParameters[11].InitAsDescriptorTable(1, &myRanges[11], D3D12_SHADER_VISIBILITY_ALL); // skydome sampler
 
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 

@@ -100,7 +100,10 @@ public:
 
 	void updateCameraVariables(Camera& aCamera, bool aFocussed, int aSize);
 	void updateAccumulationVariables(bool aShouldNotAccumulate);
+	
 	void updateNoiseTexture(const Texture& aTexture);
+	void updateSkydomeTexture(const Texture& aTexture);
+	
 	void updateOctreeVariables(const Octree& aOctree);
 	void updateVoxelGridVariables(const VoxelGrid& aGrid);
 
@@ -163,6 +166,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource>      raytraceOutputTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      accumulationOutputTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      noiseTexture;
+	Microsoft::WRL::ComPtr<ID3D12Resource>      skydomeTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      octreeBuffer;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource>      voxelGridTopLevelBuffer;
@@ -176,6 +180,9 @@ private:
 
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> cbvSrvUavHeap;
 	UINT cbvSrvUavDescriptorSize{ 0 };
+
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> samplerHeap;
+	UINT samplerDescriptorSize{ 0 };
 
 	Microsoft::WRL::ComPtr<ID3DBlob> computeShader;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> computeRootSignature;

@@ -45,10 +45,16 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	//initFilled(scene);
 
 	//initRandomVoxels(scene, 100);
-	initRandomVoxels(scene, 1, 2000);
+	//initRandomVoxels(scene, 1, 2000);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
+
+	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/studio.hdr");
+	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/midday.hdr");
+	Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/sunset.hdr");
+	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/alps.hdr");
+	graphics->updateSkydomeTexture(*mySkyDomeTexture);
 
 	octree = new Octree();
 	voxelGrid = new VoxelGrid();
@@ -71,28 +77,28 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	{
 		VoxelAtlasItem myItem;
 
-		myItem.color = glm::vec3(0, 0, 1);
-		voxelAtlas->addItem(myItem);
-
-		myItem.color = glm::vec3(0, 0.5, 0);
-		voxelAtlas->addItem(myItem);
-
-		myItem.color = glm::vec3(0, 0.5, 0.5);
-		voxelAtlas->addItem(myItem);
-
-		myItem.color = glm::vec3(0.5, 0, 0);
-		voxelAtlas->addItem(myItem);
-
-		myItem.color = glm::vec3(0.5, 0, 0.5);
-		voxelAtlas->addItem(myItem);
-
-		myItem.color = glm::vec3(0.5, 0.5, 0);
-		voxelAtlas->addItem(myItem);
-
 		myItem.color = glm::vec3(0.5, 0.5, 0.5);
 		voxelAtlas->addItem(myItem);
 
-		myItem.color = glm::vec3(20, 20, 20);
+		//myItem.color = glm::vec3(0, 0.5, 0);
+		voxelAtlas->addItem(myItem);
+
+		//myItem.color = glm::vec3(0, 0.5, 0.5);
+		voxelAtlas->addItem(myItem);
+
+		//myItem.color = glm::vec3(0.5, 0, 0);
+		voxelAtlas->addItem(myItem);
+
+		//myItem.color = glm::vec3(0.5, 0, 0.5);
+		voxelAtlas->addItem(myItem);
+
+		//myItem.color = glm::vec3(0.5, 0.5, 0);
+		voxelAtlas->addItem(myItem);
+
+		//myItem.color = glm::vec3(0.5, 0.5, 0.5);
+		voxelAtlas->addItem(myItem);
+
+		myItem.color = glm::vec3(4, 2, 2);
 		myItem.isLight = 1;
 		voxelAtlas->addItem(myItem);
 	}

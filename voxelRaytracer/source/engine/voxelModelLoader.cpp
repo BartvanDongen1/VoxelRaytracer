@@ -37,6 +37,7 @@ struct hash_pair
 static std::unordered_map<const char*, MeshModel> modelMeshes;
 static std::unordered_map<std::pair<const char* , int>, VoxelModel, hash_pair> voxelizedModels;
 static std::unordered_map<const char*, Texture> textures;
+static std::unordered_map<const char*, Texture> hdrTextures;
 
 void loadModel(const char* aFileName);
 void voxelizeMesh(const char* aFileName, int aResolution);
@@ -44,6 +45,7 @@ void voxelizeMesh2(const char* aFileName, int aResolution);
 void ReportError(const rapidobj::Error& error);
 
 void loadTexture(const char* aFileName);
+void loadHdrTexture(const char* aFileName);
 
 VoxelModel* VoxelModelLoader::getModel(const char* aFileName, int aResolution)
 {
@@ -68,6 +70,16 @@ Texture* VoxelModelLoader::getTexture(const char* aFileName)
     }
 
     return &textures[aFileName];
+}
+
+Texture* VoxelModelLoader::getHdrTexture(const char* aFileName)
+{
+    if (!hdrTextures.count(aFileName))
+    {
+        loadHdrTexture(aFileName);
+    }
+
+    return &hdrTextures[aFileName];
 }
 
 void loadModel(const char* aFileName)
@@ -223,4 +235,27 @@ void loadTexture(const char* aFileName)
     myTexture.textureData = data;
 
     textures.insert({ aFileName, myTexture });
+}
+
+void loadHdrTexture(const char* aFileName)
+{
+    // load image
+    int width;
+    int height;
+    int comp;
+    float* data = nullptr;
+    data = stbi_loadf(aFileName, &width, &height, &comp, 4);
+
+    // assert data is loaded
+    assert(data);
+
+    int totalMemSize = sizeof(float) * comp * width * height;
+
+    Texture myTexture;
+    myTexture.textureWidth = width;
+    myTexture.textureHeight = height;
+    myTexture.bytesPerPixel = sizeof(float) * 4;
+    myTexture.textureData = data;
+
+    hdrTextures.insert({ aFileName, myTexture });
 }

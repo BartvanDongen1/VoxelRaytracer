@@ -59,6 +59,9 @@ struct AtlasItem
 StructuredBuffer<AtlasItem> voxelAtlas : register(t5);
 //
 
+Texture2D skydomeTexture : register(t6);
+SamplerState skydomeSampler : register(s0);
+
 #define eps 1./ 1080.f
 #define FLOAT_MAX 3.402823466e+38F
 
@@ -109,6 +112,8 @@ HitResult hitResultDefault()
     return result;
 }
 
+float3 sampleSkydome(float3 aDirection);
+
 RayStruct generateDiffuseRay(float3 hitPoint, float3 hitNormal, inout RandomState rs);
 
 HitResult traverseRay(RayStruct aRay);
@@ -140,8 +145,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
     
     float3 myOutColor = float3(1, 1, 1);
     
-    bool hitLight = false;
-    for (int i = 0; (i < RAY_BOUNCES) && !hitLight; i++)
+    bool bounceStopped = false;
+    for (int i = 0; (i < RAY_BOUNCES) && !bounceStopped; i++)
     {
         const HitResult result = traverseRay(myRay);
         
@@ -159,7 +164,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
             //check if light
             if (myItem.isLight)
             {
-                hitLight = true;
+                bounceStopped = true;
                 continue;
             }
             
@@ -168,13 +173,21 @@ void main(uint3 DTid : SV_DispatchThreadID)
         }
         else
         {
-            //hit nothing
-            OutputTexture[DTid.xy] += float4(0, 0, 0, 1);
-            return;
+            //hit nothing -> sample skyDome
+            myOutColor *= sampleSkydome(myRay.direction);
+            bounceStopped = true;
         }
     }
     
-    OutputTexture[DTid.xy] += float4(myOutColor, 1) * (int) hitLight;
+    OutputTexture[DTid.xy] += float4(myOutColor, 1) * (int) bounceStopped;
+}
+
+#define PI 3.1415926535
+
+float3 sampleSkydome(float3 aDirection)
+{
+    float2 uv = float2(atan2(aDirection.z, aDirection.x) / (2.0 * PI) + 0.5, acos(-aDirection.y) / PI);
+    return skydomeTexture.SampleLevel(skydomeSampler, uv, 0).xyz;
 }
 
 struct AABBResult

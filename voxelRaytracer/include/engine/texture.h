@@ -9,4 +9,3 @@ public:
 	int textureHeight{ 0 };
 	int bytesPerPixel{ 0 };
 };
-
