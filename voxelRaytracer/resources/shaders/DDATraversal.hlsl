@@ -1,6 +1,6 @@
 RWTexture2D<float4> OutputTexture : register(u0);
 
-Texture2D noiseTexture : register(t0);
+StructuredBuffer<int> noiseTexture : register(t0);
 
 cbuffer constantBuffer : register(b0)
 {
@@ -39,19 +39,14 @@ struct Layer1Chunk
     int itemIndices[4 * 4 * 4];
 };
 
-struct VoxelItem
-{
-    float4 color;
-};
-
 StructuredBuffer<int> topLevelGrid : register(t2);
 StructuredBuffer<Layer1Chunk> Level1Grid : register(t3);
 StructuredBuffer<Layer2Chunk> Level2Grid : register(t4);
 
 struct AtlasItem
 {
-    float3 color;
-    float padding;
+    float4 colorAndRoughness;
+    float4 specularAndPercent;
     
     int isLight;
 };
@@ -63,7 +58,9 @@ Texture2D skydomeTexture : register(t6);
 SamplerState skydomeSampler : register(s0);
 
 #define eps 1./ 1080.f
+
 #define FLOAT_MAX 3.402823466e+38F
+#define INT_MAX 2147483647
 
 #define CHUNK_SIZE_1 4
 #define CHUNK_SIZE_2 4
@@ -112,16 +109,28 @@ HitResult hitResultDefault()
     return result;
 }
 
+struct BounceResult
+{
+    RayStruct bounceRay;
+    float3 colorMultiplier;
+};
+
+//BounceResult bounceResultDefault()
+//{
+//    BounceResult result;
+//    result.bounceRay = 
+    
+//    return result;
+//}
+
 float3 sampleSkydome(float3 aDirection);
 
-RayStruct generateDiffuseRay(float3 hitPoint, float3 hitNormal, inout RandomState rs);
+BounceResult generateBounce(const float3 hitPoint, const float3 hitNormal, const AtlasItem aItem, const float3 incommingRayDirection, inout RandomState rs);
 
 HitResult traverseRay(RayStruct aRay);
 
 RayStruct createRay(const float2 windowPos);
 RayStruct createRayAA(const float2 aWindowPos, const float2 aWindowSize, RandomState aRandomState);
-
-float3 reflectionRay(float3 aDirectionIn, float3 aNormal);
 
 int xorShift32(int aSeed);
 int wangHash(int aSeed);
@@ -129,18 +138,50 @@ int wangHash(int aSeed);
 void updateRandom(inout RandomState rs);
 float3 random1(RandomState rs);
 
-RandomState initialize(int2 aDTid, int aFrameSeed);
+RandomState initialize(int2 aDTid, int windowSizeX, int aFrameSeed);
 
-float3 randomInUnitSphere(float3 r);
+float3 randomInUnitSphere(const float3 r);
 
-#define RAY_BOUNCES 2
+#define RAY_BOUNCES 3
+
+float3 LessThan(const float3 f, const float value)
+{
+    return float3(
+        (f.x < value) ? 1.0f : 0.0f,
+        (f.y < value) ? 1.0f : 0.0f,
+        (f.z < value) ? 1.0f : 0.0f);
+}
+ 
+float3 LinearToSRGB(float3 rgb)
+{
+    rgb = clamp(rgb, 0.0f, 1.0f);
+     
+    return lerp(
+        pow(rgb, float3(1.0f / 2.4f, 1.0f / 2.4f, 1.0f / 2.4f)) * 1.055f - 0.055f,
+        rgb * 12.92f,
+        LessThan(rgb, 0.0031308f)
+    );
+}
+ 
+float3 SRGBToLinear(float3 rgb)
+{
+    rgb = clamp(rgb, 0.0f, 1.0f);
+    
+    return lerp(
+        pow(((rgb + 0.055f) / 1.055f), float3(2.4f, 2.4f, 2.4f)),
+        rgb / 12.92f,
+        LessThan(rgb, 0.04045f)
+    );
+}
+
 
 [numthreads(8, 4, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
     const float2 WindowLocal = ((float2) DTid.xy / maxThreadIter.xy);
     
-    RandomState rs = initialize(DTid.xy, frameSeed);
+    RandomState rs = initialize(DTid.xy, maxThreadIter.x, frameSeed);
+    
     RayStruct myRay = createRayAA(WindowLocal, maxThreadIter.xy, rs);
     
     float3 myOutColor = float3(1, 1, 1);
@@ -153,13 +194,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
         if (result.hitDistance != FLOAT_MAX && !(result.hitNormal.x == 0 && result.hitNormal.y == 0 && result.hitNormal.z == 0))
         {
             //hit voxel
-
-            //OutputTexture[DTid.xy] += float4(result.hitNormal, 1);
-            //return;
-            
             const AtlasItem myItem = voxelAtlas[result.itemIndex - 1];
             
-            myOutColor *= myItem.color;
+            const float3 myHitPoint = myRay.origin + myRay.direction * result.hitDistance;
+            BounceResult myResult = generateBounce(myHitPoint, result.hitNormal, myItem, myRay.direction, rs);
+            myRay = myResult.bounceRay;
+            
+            myOutColor *= myResult.colorMultiplier;
             
             //check if light
             if (myItem.isLight)
@@ -167,14 +208,11 @@ void main(uint3 DTid : SV_DispatchThreadID)
                 bounceStopped = true;
                 continue;
             }
-            
-            float3 myHitPoint = myRay.origin + myRay.direction * result.hitDistance;
-            myRay = generateDiffuseRay(myHitPoint, result.hitNormal, rs);
         }
         else
         {
             //hit nothing -> sample skyDome
-            myOutColor *= sampleSkydome(myRay.direction);
+            myOutColor *= (SRGBToLinear(sampleSkydome(myRay.direction)) * 2.f);
             bounceStopped = true;
         }
     }
@@ -682,10 +720,10 @@ RayStruct createRayAA(const float2 aWindowPos, const float2 aWindowSize, RandomS
 {
     RayStruct myRay;
     
-    float2 invSize = 1.f / aWindowSize;
+    const float2 invSize = 1.f / aWindowSize;
     
-    float2 offset = frac(0.00002328 * float2(aRandomState.z0, aRandomState.z1)) * invSize.x - (0.5 * invSize.x);
-    float2 myWindowPos = aWindowPos + offset;
+    const float2 offset = frac(0.00002328 * float2(aRandomState.z0, aRandomState.z1)) * invSize - (0.5 * invSize);
+    const float2 myWindowPos = aWindowPos + offset;
     
     myRay.origin = (camUpperLeftCorner + camPixelOffsetHorizontal * myWindowPos.x + camPixelOffsetVertical * myWindowPos.y).xyz;
     myRay.direction = normalize(myRay.origin);
@@ -698,27 +736,35 @@ RayStruct createRayAA(const float2 aWindowPos, const float2 aWindowSize, RandomS
     return myRay;
 }
 
-float3 reflectionRay(float3 aDirectionIn, float3 aNormal)
+BounceResult generateBounce(const float3 hitPoint, const float3 hitNormal, const AtlasItem aItem, const float3 incommingRayDirection, inout RandomState rs)
 {
-    float3 reflectionRayDir = aDirectionIn - (aNormal * 2 * dot(aDirectionIn, aNormal));
-    return normalize(reflectionRayDir);
-}
-
-RayStruct generateDiffuseRay(float3 hitPoint, float3 hitNormal, inout RandomState rs)
-{
-    RayStruct myRay;
+    BounceResult myResult;
     
-    //diffusion
+    myResult.bounceRay.origin = hitPoint;
+    
     updateRandom(rs);
-    float3 random = random1(rs);
     
-    float3 rayDirection = normalize(hitNormal + randomInUnitSphere(random));
+    // calculate whether we are going to do a diffuse or specular reflection ray 
+    const float rand01 = float(rs.z0) / INT_MAX;
+    const float doSpecular = (rand01 < aItem.specularAndPercent.w) ? 1.0f : 0.0f;
+ 
+    //diffusion ray
+    updateRandom(rs);
+    const float3 random = random1(rs);
+
+    const float3 diffuseRayDirection = normalize(hitNormal + randomInUnitSphere(random));
     
-    myRay.direction = rayDirection;
-    myRay.origin = hitPoint;
-    myRay.rayDelta = 1. / max(abs(myRay.direction), eps);
+    //specular ray
+    const float3 specularRayDirection = normalize(lerp(reflect(incommingRayDirection, hitNormal), diffuseRayDirection, aItem.colorAndRoughness.w * aItem.colorAndRoughness.w));
     
-    return myRay;
+    //decide what ray to use
+    myResult.bounceRay.direction = lerp(diffuseRayDirection, specularRayDirection, doSpecular);
+    myResult.bounceRay.rayDelta = 1. / max(abs(myResult.bounceRay.direction), eps);
+        
+    // update the colorMultiplier
+    myResult.colorMultiplier = lerp(aItem.colorAndRoughness.xyz, aItem.specularAndPercent.xyz, doSpecular);
+
+    return myResult;
 }
 
 int xorShift32(int aSeed)
@@ -759,7 +805,7 @@ float3 random1(RandomState rs)
     return result;
 }
 
-float3 randomInUnitSphere(float3 r)
+float3 randomInUnitSphere(const float3 r)
 {
     float3 p;
     p = 2.0 * r - float3(1.0, 1.0, 1.0);
@@ -768,19 +814,19 @@ float3 randomInUnitSphere(float3 r)
     return p;
 }
 
-RandomState initialize(int2 aDTid, int aFrameSeed)
+RandomState initialize(int2 aDTid, int windowSizeX, int aFrameSeed)
 {
     RandomState output;
+        
+    int random1 = noiseTexture[aDTid.x + aDTid.y * windowSizeX];
+    int random2 = xorShift32(random1);
+    int random3 = xorShift32(random2);
+    int random4 = xorShift32(random3);
     
-    int width, height, numLevels;
-    noiseTexture.GetDimensions(0, width, height, numLevels);
-    
-    float4 random = noiseTexture.Load(int3((aDTid.xy) % int2(width, height), 0));
-    
-    output.z0 = random.x * 1000000 + aFrameSeed;
-    output.z1 = random.y * 1000000 + aFrameSeed;
-    output.z2 = random.z * 1000000 + aFrameSeed;
-    output.z3 = random.w * 1000000 + aFrameSeed;
+    output.z0 = random1 * 10000 + aFrameSeed;
+    output.z1 = random2 * 10000 + aFrameSeed;
+    output.z2 = random3 * 10000 + aFrameSeed;
+    output.z3 = random4 * 10000 + aFrameSeed;
     
     return output;
 }

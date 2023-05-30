@@ -47,12 +47,14 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	//initRandomVoxels(scene, 100);
 	//initRandomVoxels(scene, 1, 2000);
 
+	placeFilledSphere(scene, 30, 50, 100, 14, 1);
+
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
 
 	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/studio.hdr");
-	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/midday.hdr");
-	Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/sunset.hdr");
+	Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/midday.hdr");
+	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/sunset.hdr");
 	//Texture* mySkyDomeTexture = VoxelModelLoader::getHdrTexture("resources/textures/skydomes/alps.hdr");
 	graphics->updateSkydomeTexture(*mySkyDomeTexture);
 
@@ -77,7 +79,14 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	{
 		VoxelAtlasItem myItem;
 
-		myItem.color = glm::vec3(0.5, 0.5, 0.5);
+		// color: 0.8, 0.8, 0.8
+		// roughness: 0.f
+		myItem.colorAndRoughness = glm::vec4(0.8, 0.1, 0.1, 0.1f);
+
+		// specular: 0.8, 0.8, 0.8
+		// percent: 0.2f
+		myItem.specularAndPercent = glm::vec4(0.9, 0.9, 0.9, 0.2f);
+
 		voxelAtlas->addItem(myItem);
 
 		//myItem.color = glm::vec3(0, 0.5, 0);
@@ -98,7 +107,7 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 		//myItem.color = glm::vec3(0.5, 0.5, 0.5);
 		voxelAtlas->addItem(myItem);
 
-		myItem.color = glm::vec3(4, 2, 2);
+		myItem.colorAndRoughness = glm::vec4(10, 10, 10, 0.f);
 		myItem.isLight = 1;
 		voxelAtlas->addItem(myItem);
 	}

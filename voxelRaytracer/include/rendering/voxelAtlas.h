@@ -1,11 +1,11 @@
 #pragma once
 #include <vector>
-#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 struct VoxelAtlasItem
 {
-	glm::vec3 color;
-	float padding;
+	glm::vec4 colorAndRoughness;
+	glm::vec4 specularAndPercent;
 
 	int isLight{ 0 };
 };

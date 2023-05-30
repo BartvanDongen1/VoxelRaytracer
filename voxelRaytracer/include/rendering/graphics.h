@@ -162,6 +162,9 @@ private:
 	//profiling
 	GPUProfiler* profiler;
 
+	uint32_t sizeX;
+	uint32_t sizeY;
+
 	//compute shader stuff
 	Microsoft::WRL::ComPtr<ID3D12Resource>      raytraceOutputTexture;
 	Microsoft::WRL::ComPtr<ID3D12Resource>      accumulationOutputTexture;

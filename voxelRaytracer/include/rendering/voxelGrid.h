@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 constexpr int layer1Size = 4;
 constexpr int layer2Size = 4;

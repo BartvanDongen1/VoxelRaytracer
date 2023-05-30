@@ -23,3 +23,5 @@ struct VoxelModel
 void initRandomVoxels(VoxelModel* aModel, int aVoxelIndex, int aFillAmount = 10);
 
 void initFilled(VoxelModel* aModel);
+
+void placeFilledSphere(VoxelModel* aModel, int aX, int aY, int aZ, float aRadius, uint32_t aValue);
