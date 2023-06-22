@@ -1087,15 +1087,16 @@ void Graphics::loadComputeStage(const unsigned int aSizeX, const unsigned int aS
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeRework.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceComputeOctreeReworkOptimized.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/test.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
-    /*D3DCompileFromFile(L"resources/shaders/DDATraversal.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_6_0", compileFlags, 0, &computeShader, &globalErrorBlob);
+    D3DCompileFromFile(L"resources/shaders/raytraceLighting.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob);
 
         if (globalErrorBlob)
         {
             OutputDebugStringA((char*)globalErrorBlob->GetBufferPointer());
             globalErrorBlob->Release();
-        }*/
+        }
 
-    ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/DDATraversal.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/DDATraversal.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
+    //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceLighting.hlsl", macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/raytraceCompute.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
     //ThrowIfFailed(D3DCompileFromFile(L"resources/shaders/rayDirToColor.hlsl", macros, nullptr, "main", "cs_5_0", compileFlags, 0, &computeShader, &globalErrorBlob));
 

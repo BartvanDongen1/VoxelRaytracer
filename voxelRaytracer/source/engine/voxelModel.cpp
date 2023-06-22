@@ -4,9 +4,10 @@
 #include <algorithm>
 
 VoxelModel::VoxelModel(int aSizeX, int aSizeY, int aSizeZ) :
-	sizeX(aSizeX), sizeY(aSizeY), sizeZ(aSizeZ)
+	sizeX(aSizeX), sizeY(aSizeY), sizeZ(aSizeZ),
+	dataSize(aSizeX * aSizeY * aSizeZ)
 {
-	data = new uint32_t[aSizeX * aSizeY * aSizeZ]{ 0 };
+	data = new uint32_t[dataSize]{ 0 };
 }
 
 VoxelModel::~VoxelModel()
@@ -14,17 +15,29 @@ VoxelModel::~VoxelModel()
 
 void VoxelModel::combineModel(int aX, int aY, int aZ, VoxelModel * aModel)
 {
-	assert(aX + aModel->sizeX <= sizeX);
-	assert(aY + aModel->sizeY <= sizeY);
-	assert(aZ + aModel->sizeZ <= sizeZ);
+	//find bounds of voxel model
+	int minX = std::clamp(aX, 0, sizeX);
+	int minY = std::clamp(aY, 0, sizeY);
+	int minZ = std::clamp(aZ, 0, sizeZ);
 
-	for (int i = 0; i < aModel->sizeX; i++)
+	int maxX = std::clamp(aX + aModel->sizeX, 0, sizeX);
+	int maxY = std::clamp(aY + aModel->sizeY, 0, sizeY);
+	int maxZ = std::clamp(aZ + aModel->sizeZ, 0, sizeZ);
+
+	/*assert(aX + aModel->sizeX <= sizeX);
+	assert(aY + aModel->sizeY <= sizeY);
+	assert(aZ + aModel->sizeZ <= sizeZ);*/
+
+	for (int i = minX; i < maxX; i++)
 	{
-		for (int j = 0; j < aModel->sizeY; j++)
+		for (int j = minY; j < maxY; j++)
 		{
-			for (int k = 0; k < aModel->sizeZ; k++)
+			for (int k = minZ; k < maxZ; k++)
 			{
-				setVoxel(aX + i, aY + j, aZ + k, aModel->getVoxel(i, j, k));
+				// don't fill empty voxels
+				if (!aModel->getVoxel(i - aX, j - aY, k - aZ)) continue;
+
+				setVoxel(i, j, k, aModel->getVoxel(i - aX, j - aY, k - aZ));
 			}
 		}
 	}
@@ -55,11 +68,11 @@ void initRandomVoxels(VoxelModel* aModel, int aVoxelIndex, int aFillAmount)
 	}
 }
 
-void initFilled(VoxelModel* aModel)
+void initFilled(VoxelModel* aModel, int aVoxelIndex)
 {
 	for (int i = 0; i < aModel->sizeX * aModel->sizeY * aModel->sizeZ; i++)
 	{
-		aModel->data[i] = 1;
+		aModel->data[i] = aVoxelIndex;
 	}
 }
 
@@ -67,12 +80,12 @@ void placeFilledSphere(VoxelModel* aModel, int aX, int aY, int aZ, float aRadius
 {
 	//find bounds of sphere
 	int minX = floor(std::clamp(aX - aRadius, 0.f, static_cast<float>(aModel->sizeX)));
-	int minY = floor(std::clamp(aY - aRadius, 0.f, static_cast<float>(aModel->sizeX)));
-	int minZ = floor(std::clamp(aZ - aRadius, 0.f, static_cast<float>(aModel->sizeX)));
+	int minY = floor(std::clamp(aY - aRadius, 0.f, static_cast<float>(aModel->sizeY)));
+	int minZ = floor(std::clamp(aZ - aRadius, 0.f, static_cast<float>(aModel->sizeZ)));
 
 	int maxX = ceil(std::clamp(aX + aRadius, 0.f, static_cast<float>(aModel->sizeX)));
-	int maxY = ceil(std::clamp(aY + aRadius, 0.f, static_cast<float>(aModel->sizeX)));
-	int maxZ = ceil(std::clamp(aZ + aRadius, 0.f, static_cast<float>(aModel->sizeX)));
+	int maxY = ceil(std::clamp(aY + aRadius, 0.f, static_cast<float>(aModel->sizeY)));
+	int maxZ = ceil(std::clamp(aZ + aRadius, 0.f, static_cast<float>(aModel->sizeZ)));
 
 	for (int x = minX; x < maxX; x++)
 	{

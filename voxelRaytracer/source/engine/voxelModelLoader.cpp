@@ -41,13 +41,13 @@ static std::unordered_map<const char*, Texture> hdrTextures;
 
 void loadModel(const char* aFileName);
 void voxelizeMesh(const char* aFileName, int aResolution);
-void voxelizeMesh2(const char* aFileName, int aResolution);
+void voxelizeMesh2(const char* aFileName, int aResolution, int aFillVoxelIndex = -1);
 void ReportError(const rapidobj::Error& error);
 
 void loadTexture(const char* aFileName);
 void loadHdrTexture(const char* aFileName);
 
-VoxelModel* VoxelModelLoader::getModel(const char* aFileName, int aResolution)
+VoxelModel* VoxelModelLoader::getModel(const char* aFileName, int aResolution, int aFillVoxelIndex)
 {
 	if (!modelMeshes.count(aFileName))
 	{
@@ -56,7 +56,7 @@ VoxelModel* VoxelModelLoader::getModel(const char* aFileName, int aResolution)
 
 	if (!voxelizedModels.count({ aFileName, aResolution }))
 	{
-        voxelizeMesh2(aFileName, aResolution);
+        voxelizeMesh2(aFileName, aResolution, aFillVoxelIndex);
 	}
 
     return &voxelizedModels[{ aFileName, aResolution }];
@@ -172,11 +172,10 @@ void voxelizeMesh(const char* aFileName, int aResolution)
     voxelizedModels.insert({ { aFileName, aResolution }, myVoxelModel });
 }
 
-void voxelizeMesh2(const char* aFileName, int aResolution)
+void voxelizeMesh2(const char* aFileName, int aResolution, int aFillVoxelIndex)
 {
     MeshModel myModel = modelMeshes[aFileName];
     
-
     // initialize mesh in correct format for voxelization
 
     vx_mesh_t* myMesh;
@@ -199,6 +198,15 @@ void voxelizeMesh2(const char* aFileName, int aResolution)
 
     VoxelModel myVoxelModel{ aResolution, aResolution, aResolution };
     myVoxelModel.data = data;
+
+    if (aFillVoxelIndex != -1)
+    {
+        //replace all voxels that are filled in with a specific index that isn't 0
+        for (int i = 0; i < myVoxelModel.dataSize; i++)
+        {
+            myVoxelModel.data[i] = (!(myVoxelModel.data[i] == 0)) * aFillVoxelIndex;
+        }
+    }
 
     voxelizedModels.insert({ { aFileName, aResolution }, myVoxelModel });
 }

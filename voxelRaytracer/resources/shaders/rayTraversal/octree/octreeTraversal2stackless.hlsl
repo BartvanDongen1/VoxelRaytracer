@@ -1,5 +1,5 @@
-//#include "octreeDefaults.hlsli"
-#include "octree/octreeDefaults.hlsli"
+#include "rayTraversal/common/TraversalDefault.hlsli"
+//#include "../common/TraversalDefault.hlsli"
 
 struct VoxelTraverseResult
 {
@@ -42,7 +42,7 @@ VoxelTraverseResult traverseVoxel(RayStruct aRay, float aScale)
     return min;
 }
 
-HitResult ray_octree_traversal(RayStruct aRay)
+HitResult traverseRay(RayStruct aRay)
 {
     int scale = 1 << (octreeLayerCount - 1);
     
@@ -87,12 +87,6 @@ OctreeNode getNodeAtIndexAndOffset(const int aIndex, const int aOffset)
 {
     return flatOctreeNodes[aIndex].nodes[aOffset];
 }
-
-struct TraversalItem
-{
-    OctreeNode aNode;
-    int aScale;
-};
 
 int3 removeOffsetAtScale(int3 aOctantCorner, int aScale)
 {
@@ -159,7 +153,7 @@ int2 getChildNode(const int2 aNode, const int aOctant)
     
     OctreeNode myNode = getNodeAtIndexAndOffset(GET_CHILD_INDEX(aNode), aOctant);
     result.x = CHILDREN_FLAGS_OFFSET(myNode.children) | CHILD_INDEX_OFFSET(myNode.childrenIndex);
-    result.y = SCALE_OFFSET(GET_SCALE(aNode) - 1) | PARENT_OCTANT_OFFSET(myNode.parentOctant) | PARENT_INDEX_OFFSET(myNode.parentIndex);
+    result.y = SCALE_OFFSET(GET_SCALE(aNode) - 1) | PARENT_OCTANT_OFFSET(GET_OCTREE_PARENT_OCTANT(myNode.parentOctant)) | PARENT_INDEX_OFFSET(myNode.parentIndex);
     
     return result;
 }
@@ -172,7 +166,7 @@ int2 getParentNode(const int2 aNode)
     
     OctreeNode myNode = getNodeAtIndexAndOffset(GET_PARENT_INDEX(aNode), GET_PARENT_OCTANT(aNode));
     result.x = CHILDREN_FLAGS_OFFSET(myNode.children) | CHILD_INDEX_OFFSET(myNode.childrenIndex);
-    result.y = SCALE_OFFSET(GET_SCALE(aNode) + 1) | PARENT_OCTANT_OFFSET(myNode.parentOctant) | PARENT_INDEX_OFFSET(myNode.parentIndex);
+    result.y = SCALE_OFFSET(GET_SCALE(aNode) + 1) | PARENT_OCTANT_OFFSET(GET_OCTREE_PARENT_OCTANT(myNode.parentOctant)) | PARENT_INDEX_OFFSET(myNode.parentIndex);
     
     return result;
 }
@@ -185,9 +179,14 @@ int2 getInitialNode()
     
     OctreeNode myNode = getNodeAtIndexAndOffset(0, 0);
     result.x = CHILDREN_FLAGS_OFFSET(myNode.children) | CHILD_INDEX_OFFSET(myNode.childrenIndex);
-    result.y = SCALE_OFFSET(octreeLayerCount) | PARENT_OCTANT_OFFSET(myNode.parentOctant) | PARENT_INDEX_OFFSET(myNode.parentIndex);
+    result.y = SCALE_OFFSET(octreeLayerCount) | PARENT_OCTANT_OFFSET(GET_OCTREE_PARENT_OCTANT(myNode.parentOctant)) | PARENT_INDEX_OFFSET(myNode.parentIndex);
     
     return result;
+}
+
+int getOctreeItemIndex(const int2 aNode, const int aOctant)
+{
+    return (GET_OCTREE_ITEM_INDEX(flatOctreeNodes[GET_CHILD_INDEX(aNode)].nodes[aOctant].parentOctant)) >> 3;
 }
 
 HitResult traverseNode(RayStruct aRay)
@@ -199,6 +198,8 @@ HitResult traverseNode(RayStruct aRay)
     
     RayStruct myRay = aRay;
     float distance = 0.0f;
+    
+    float3 traverseNormal = float3(0, 0, 0);
     
     int loopCount = 0;
     while (stackPointer > 0)
@@ -227,7 +228,9 @@ HitResult traverseNode(RayStruct aRay)
             {
                 HitResult result = hitResultDefault();
                 result.hitDistance = distance - 0.00011f;
-            
+                result.hitNormal = traverseNormal;
+                result.itemIndex = getOctreeItemIndex(data, initialOctantOffset);
+                
                 return result;
             }
             
@@ -251,6 +254,7 @@ HitResult traverseNode(RayStruct aRay)
             //find new octant
             VoxelTraverseResult traverseResult = traverseVoxel(myRay, currentScale >> 1);
             distance += traverseResult.distance;
+            traverseNormal = traverseResult.normal;
             
             myRay.origin = aRay.origin + myRay.direction * distance;
             
@@ -264,6 +268,8 @@ HitResult traverseNode(RayStruct aRay)
                 {
                     HitResult result = hitResultDefault();
                     result.hitDistance = distance - 0.00011f;
+                    result.hitNormal = traverseNormal;
+                    result.itemIndex = getOctreeItemIndex(data, currentOctantOffset);
             
                     return result;
                 }

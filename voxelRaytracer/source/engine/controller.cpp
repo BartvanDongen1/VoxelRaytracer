@@ -27,6 +27,7 @@ Controller::~Controller()
 void Controller::init()
 {
 	camera->init({ 1,1,1 }, { 0,0,1 }, 100.f);
+	//camera->init({ 1,1,1 }, { 0,0,1 }, 50.f);
 }
 
 void Controller::update(float aDeltaTime)

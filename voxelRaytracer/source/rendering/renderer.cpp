@@ -25,9 +25,6 @@ Renderer::~Renderer()
 
 void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 {
-	OctreeItem myItem;
-	myItem.color = glm::vec3(1, 1, 1);
-
 	Window::init(aSizeX, aSizeY, "Voxel Renderer");
 	graphics->init(aSizeX, aSizeY);
 	
@@ -37,9 +34,24 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	imguiWindow.setGpuProfiler(graphics->getProfiler());
 
 	octree = new Octree();
+	
+	//top level scene
+	VoxelModel myMainScene = VoxelModel(128, 128, 128);
+
+	//place floor
+	VoxelModel myFloor = VoxelModel(128, 1, 128);
+	initFilled(&myFloor, 2);
+
+	myMainScene.combineModel(0, 109, 0, &myFloor);
+
 
 	//scene = VoxelModelLoader::getModel("resources/models/teapot/teapot.obj", 16);
-	scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 128);
+	//scene = VoxelModelLoader::getModel("resources/models/monkey/monkey.obj", 128);
+	scene = VoxelModelLoader::getModel("resources/models/dragon/dragon.obj", 128, 1);
+
+	myMainScene.combineModel(0, 20, 0, scene);
+
+	//scene->combineModel(0, 89, 0, &myFloor);
 
 	//scene = new VoxelModel(128, 128, 128);
 	//initFilled(scene);
@@ -47,7 +59,8 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	//initRandomVoxels(scene, 100);
 	//initRandomVoxels(scene, 1, 2000);
 
-	placeFilledSphere(scene, 30, 50, 100, 14, 1);
+	placeFilledSphere(&myMainScene, 30, 50, 100, 14, 3);
+	placeFilledSphere(&myMainScene, 100, 20, 30, 14, 4);
 
 	Texture* myTexture = VoxelModelLoader::getTexture("resources/textures/blueNoise.png");
 	graphics->updateNoiseTexture(*myTexture);
@@ -61,53 +74,34 @@ void Renderer::init(const unsigned int aSizeX, const unsigned int aSizeY)
 	octree = new Octree();
 	voxelGrid = new VoxelGrid();
 
-	octree->init(scene);
-	voxelGrid->init(scene);
-
-	/*GridItem myItem2;
-	myItem2.color = glm::vec3(1, 1, 1);
-
-	voxelGrid->insertItem(0 , 0 , 0 , myItem2);
-	voxelGrid->insertItem(63, 0 , 0 , myItem2);
-	voxelGrid->insertItem(0 , 63, 0 , myItem2);
-	voxelGrid->insertItem(63, 63, 0 , myItem2);
-	voxelGrid->insertItem(0 , 0 , 63, myItem2);
-	voxelGrid->insertItem(63, 0 , 63, myItem2);
-	voxelGrid->insertItem(0 , 63, 63, myItem2);
-	voxelGrid->insertItem(63, 63, 63, myItem2);*/
+	octree->init(&myMainScene);
+	voxelGrid->init(&myMainScene);
 
 	{
 		VoxelAtlasItem myItem;
 
-		// color: 0.8, 0.8, 0.8
-		// roughness: 0.f
-		myItem.colorAndRoughness = glm::vec4(0.8, 0.1, 0.1, 0.1f);
+	//voxel 0: empty
+		voxelAtlas->addItem(myItem);
 
-		// specular: 0.8, 0.8, 0.8
-		// percent: 0.2f
-		myItem.specularAndPercent = glm::vec4(0.9, 0.9, 0.9, 0.2f);
+	// voxel 1: white material
+		myItem.colorAndRoughness = glm::vec4(0.8, 0.8, 0.8, 1.f);
+		myItem.specularAndPercent = glm::vec4(0.9, 0.9, 0.9, 0.0f);
 
 		voxelAtlas->addItem(myItem);
 
-		//myItem.color = glm::vec3(0, 0.5, 0);
+	// voxel 2: gray material
+		myItem.colorAndRoughness = glm::vec4(0.2, 0.2, 0.2, 0.1f);
+		myItem.specularAndPercent = glm::vec4(0.4, 0.4, 0.4, 0.95f);
+
 		voxelAtlas->addItem(myItem);
 
-		//myItem.color = glm::vec3(0, 0.5, 0.5);
+	//voxel 3: red light
+		myItem.colorAndRoughness = glm::vec4(50, 0.5, 0.5, 0.f);
+		myItem.isLight = 1;
 		voxelAtlas->addItem(myItem);
 
-		//myItem.color = glm::vec3(0.5, 0, 0);
-		voxelAtlas->addItem(myItem);
-
-		//myItem.color = glm::vec3(0.5, 0, 0.5);
-		voxelAtlas->addItem(myItem);
-
-		//myItem.color = glm::vec3(0.5, 0.5, 0);
-		voxelAtlas->addItem(myItem);
-
-		//myItem.color = glm::vec3(0.5, 0.5, 0.5);
-		voxelAtlas->addItem(myItem);
-
-		myItem.colorAndRoughness = glm::vec4(10, 10, 10, 0.f);
+	//voxel 4: green light
+		myItem.colorAndRoughness = glm::vec4(0.5, 50, 0.5, 0.f);
 		myItem.isLight = 1;
 		voxelAtlas->addItem(myItem);
 	}

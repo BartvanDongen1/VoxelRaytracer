@@ -4,8 +4,8 @@
 
 struct VoxelAtlasItem
 {
-	glm::vec4 colorAndRoughness;
-	glm::vec4 specularAndPercent;
+	glm::vec4 colorAndRoughness{ 0,0,0,0 };
+	glm::vec4 specularAndPercent{ 0,0,0,0 };
 
 	int isLight{ 0 };
 };

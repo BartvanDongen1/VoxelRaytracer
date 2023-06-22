@@ -22,7 +22,7 @@ void Octree::init(VoxelModel* aModel)
 			assert(myX < aModel->sizeX && myY < aModel->sizeY && myZ < aModel->sizeZ);
 
 			OctreeItem myItem;
-			myItem.color = glm::vec3(1, 1, 1);
+			myItem.data = myPointData << 3;
 
 			insertItem(myX, myY, myZ, myItem);
 		}
@@ -96,7 +96,7 @@ void Octree::insertItem(int aX, int aY, int aZ, OctreeItem aItem)
 		}
 
 		flatTree[myNodeIndex][myOctantOffset].node.parentIndex = myParentIndex;
-		flatTree[myNodeIndex][myOctantOffset].node.parentOctant = myParentOctant;
+		flatTree[myNodeIndex][myOctantOffset].node.parentOctant = myParentOctant + 8;
 
 		myParentIndex = myNodeIndex;
 		myParentOctant = myOctantOffset;

@@ -8,9 +8,9 @@
 //16 btyes
 struct OctreeItem
 {
-	glm::vec3 color{ 0,0,0 };
+	float padding[3];
 
-	float padding;
+	int data;
 };
 
 //16 btyes
